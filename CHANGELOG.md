@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-08-14
+
 ### Added
 
 - Initial release. `remail` keeps a local, read-only mirror of an IMAP inbox in
