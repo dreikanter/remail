@@ -23,6 +23,11 @@ jobs:
         with:
           go-version: ${{ matrix.go }}
 
+      # Building the binary is what catches a missing or untracked main
+      # package; `go test ./...` passes without one.
+      - name: Build
+        run: make build
+
       - name: Run tests
         run: make test
 
