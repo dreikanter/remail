@@ -40,8 +40,7 @@ func runSync(cmd *cobra.Command, _ []string) error {
 	rebuild, _ := cmd.Flags().GetBool("rebuild")
 	offline, _ := cmd.Flags().GetBool("offline")
 
-	// Ctrl-C stops between messages rather than mid-write, so the archive is
-	// always left consistent and the next run resumes.
+	// Stop between messages, not mid-write, so the next run resumes cleanly.
 	ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

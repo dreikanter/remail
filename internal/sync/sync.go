@@ -14,9 +14,8 @@ import (
 	"github.com/dreikanter/remail/internal/store"
 )
 
-// flushEvery bounds how much progress an interrupted sync can lose. State is
-// only ever behind the filesystem, never ahead, so a re-run re-fetches at most
-// this many messages rather than duplicating or skipping any.
+// flushEvery bounds what an interrupted sync loses. State trails the
+// filesystem and never leads it, so a re-run re-fetches, never skips.
 const flushEvery = 25
 
 // Result summarizes a sync for the caller to report.
@@ -53,8 +52,7 @@ func Run(ctx context.Context, root string, opts Options) (*Result, error) {
 
 	res := &Result{}
 
-	// A format bump means every message directory was produced by older code,
-	// so they are regenerated from raw/ before anything new arrives.
+	// A format bump means every message directory came from older code.
 	if opts.Rebuild || st.ExportFormat != export.Format {
 		n, err := Rebuild(ctx, root)
 		if err != nil {
@@ -110,18 +108,17 @@ func fetch(
 	res *Result,
 	opts Options,
 ) error {
-	// UIDs are only meaningful within one UIDVALIDITY epoch. When the server
-	// changes it, previously recorded UIDs describe different messages, so the
-	// mailbox is rescanned. Nothing is re-downloaded twice on disk: the id is
-	// derived from Message-ID, so refetched mail lands on the same paths.
+	// A new UIDVALIDITY epoch makes recorded UIDs describe different messages,
+	// so the mailbox is rescanned. Ids come from Message-ID, so refetched mail
+	// lands on the same paths and costs only bandwidth.
 	if st.UIDValidity != src.UIDValidity() {
 		st.Reset(src.UIDValidity())
 	}
 
 	fromUID := st.NextUID()
 
-	// since_days bounds the first sync only. Once UIDs are recorded, the UID
-	// range is both cheaper and exact, while IMAP's SINCE has day granularity.
+	// since_days bounds the first sync only; afterwards the UID range is exact,
+	// while IMAP's SINCE has day granularity.
 	var since time.Time
 	if st.Fetched.Len() == 0 && cfg.SinceDays > 0 {
 		since = time.Now().AddDate(0, 0, -cfg.SinceDays)
@@ -172,8 +169,7 @@ func fetch(
 }
 
 func storeMessage(root string, raw []byte, date time.Time) (*store.Message, error) {
-	// The id depends on the Message-ID header, so the raw path is only known
-	// after a parse. Export does that parse and returns the record.
+	// The raw path contains the id, which only a parse can supply.
 	id, err := export.IdentifyID(raw)
 	if err != nil {
 		return nil, err

@@ -19,9 +19,7 @@ var Version = "dev"
 
 const summary = "remail — local, read-only mirror of an IMAP inbox"
 
-// help is the top-level help. It aims to fit one screen while still answering
-// the questions a first-time user actually has: what the commands are, how to
-// get started, and how mail is stored.
+// help is the top-level help: the commands, how to start, how mail is stored.
 const help = summary + `
 
 usage: remail <command> [options]
@@ -95,8 +93,7 @@ func newRoot() *cobra.Command {
 	root.PersistentFlags().StringP("path", "p", "", "mail directory")
 	root.PersistentFlags().Bool("json", false, "machine-readable output")
 
-	// Pre-declaring help lets it be hidden; otherwise cobra injects a visible
-	// one into every subcommand.
+	// Pre-declared so it can be hidden; otherwise cobra injects a visible one.
 	root.PersistentFlags().BoolP("help", "h", false, "")
 	_ = root.PersistentFlags().MarkHidden("help")
 
@@ -104,8 +101,7 @@ func newRoot() *cobra.Command {
 	root.CompletionOptions.DisableDefaultCmd = true
 	root.SetHelpCommand(&cobra.Command{Hidden: true})
 
-	// Bypass cobra's template engine entirely. Cobra's generated help is the
-	// wall of text this tool is meant to avoid.
+	// Cobra's generated help is the wall of text this tool avoids.
 	root.SetHelpFunc(func(cmd *cobra.Command, _ []string) {
 		if cmd.Parent() == nil {
 			fmt.Fprint(cmd.OutOrStdout(), help)
@@ -130,9 +126,8 @@ var placeholders = map[string]string{
 	"agent":      "name",
 }
 
-// commandHelp renders help for one subcommand: what it does, how to invoke it,
-// the flags it accepts, and a worked example or two. Global options stay in the
-// top-level help instead of being repeated under every command.
+// commandHelp renders one subcommand's help. Global options stay in the
+// top-level help rather than repeating under every command.
 func commandHelp(cmd *cobra.Command) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "remail %s — %s\n\nusage: remail %s\n", cmd.Name(), cmd.Short, cmd.Use)
@@ -233,8 +228,7 @@ func jsonMode(cmd *cobra.Command) bool {
 
 func out(cmd *cobra.Command) io.Writer { return cmd.OutOrStdout() }
 
-// oneLine collapses a header value so it cannot break a one-line-per-message
-// listing. Subjects legitimately contain newlines after header unfolding.
+// oneLine keeps an unfolded header, which may contain newlines, on one row.
 func oneLine(s string) string {
 	s = strings.ReplaceAll(s, "\r", " ")
 	s = strings.ReplaceAll(s, "\n", " ")

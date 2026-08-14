@@ -13,21 +13,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// frontmatterLimit caps how much of message.md is read when only the header
-// block is needed. Listing a mailbox reads this much per message instead of
+// frontmatterLimit caps how much of message.md a listing reads, instead of
 // parsing multi-megabyte .eml files.
 const frontmatterLimit = 32 << 10
 
 const fence = "---"
 
-// Frontmatter is the YAML header block at the top of message.md. It is the
-// record `list` reads, so it must stay cheap to parse and self-contained.
+// Frontmatter is the YAML header block at the top of message.md, and the
+// record `list` reads.
 type Frontmatter struct {
 	ID string `yaml:"id" json:"id"`
 
-	// Date is the server's receipt time (IMAP INTERNALDATE). It drives sort
-	// order and file paths because, unlike the Date header, the sender cannot
-	// set it.
+	// Date is the server's receipt time (INTERNALDATE). It drives sort order and
+	// paths because, unlike the Date header, the sender cannot set it.
 	Date time.Time `yaml:"date" json:"date"`
 
 	// Sent is the Date header as the sender wrote it, kept for reference.
@@ -53,8 +51,7 @@ type Frontmatter struct {
 	// from a text/plain part, so a search miss can be explained.
 	Converted bool `yaml:"converted,omitempty" json:"converted,omitempty"`
 
-	// Raw points at the original .eml, relative to the message directory, so
-	// every message is one hop from its full headers.
+	// Raw points at the original .eml, relative to the message directory.
 	Raw string `yaml:"raw" json:"raw"`
 }
 
@@ -66,9 +63,8 @@ type Message struct {
 
 // Render returns message.md contents: the frontmatter block followed by body.
 func Render(fm *Frontmatter, body string) ([]byte, error) {
-	// A YAML marshaller is required here rather than string formatting: subjects
-	// routinely contain colons, quotes, and newlines from folded headers, any of
-	// which would produce invalid YAML if concatenated by hand.
+	// Must be marshalled, not formatted: subjects routinely contain colons,
+	// quotes, and newlines from folded headers.
 	meta, err := yaml.Marshal(fm)
 	if err != nil {
 		return nil, err
@@ -168,11 +164,8 @@ func readShard(root, shard string) ([]Message, error) {
 }
 
 // List returns messages newest first. A limit of 0 means no limit; a non-zero
-// since drops anything older.
-//
-// Shards are read newest first and scanning stops as soon as enough messages
-// are collected, so listing a large archive touches only the most recent month
-// or two rather than every message.
+// since drops anything older. Shards are read newest first and scanning stops
+// once the limit is filled, so a large archive costs only the recent months.
 func List(root string, limit int, since time.Time) ([]Message, error) {
 	names, err := shards(root)
 	if err != nil {
@@ -192,8 +185,7 @@ func List(root string, limit int, since time.Time) ([]Message, error) {
 			out = append(out, m)
 		}
 
-		// Every remaining shard is strictly older than this one, so once the
-		// quota is filled after a completed shard there is nothing newer left.
+		// Every remaining shard is older, so nothing newer is left to find.
 		if limit > 0 && len(out) >= limit {
 			break
 		}

@@ -34,19 +34,17 @@ type Skill struct {
 	Description string `json:"description"`
 	Body        string `json:"body"`
 
-	// raw is the embedded file exactly as written. Markdown returns it
-	// verbatim rather than reassembling it from the parsed fields, so what is
-	// installed is byte-identical to both the source file and to what `remail
-	// skill` prints, with no way for the two to drift.
+	// raw is the embedded file as written. Markdown returns it verbatim rather
+	// than reassembling it, so the installed file, the source, and stdout
+	// cannot drift apart.
 	raw string
 }
 
 // Markdown returns the full document, frontmatter included.
 func (s Skill) Markdown() string { return s.raw }
 
-// loadSkill parses the embedded document. A malformed document is a build-time
-// mistake rather than a runtime condition, so it panics: every code path here
-// is exercised by the tests.
+// loadSkill parses the embedded document. A malformed one is a build mistake,
+// not a runtime condition, so it panics.
 func loadSkill() Skill {
 	const open, close = "---\n", "\n---\n"
 
@@ -194,8 +192,7 @@ func runSkill(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if installFailed(actions) {
-		// The per-action lines above already say what went wrong; a second
-		// error message on stderr would only repeat them.
+		// The per-action lines above already say what went wrong.
 		return errSilent
 	}
 	return nil
@@ -247,9 +244,8 @@ func planOne(target agentTarget, doc string, force bool) installAction {
 	}
 	action.Path = path
 
-	// The agent's own skills directory must already exist. Creating it would
-	// mean inventing a configuration for a tool the user may not have, so a
-	// missing one is reported rather than fixed.
+	// Creating the agent's own skills directory would invent a configuration
+	// for a tool the user may not have, so a missing one is reported.
 	skillsDir := filepath.Dir(filepath.Dir(path))
 	if info, err := os.Stat(skillsDir); err != nil || !info.IsDir() {
 		action.Error = fmt.Sprintf("no skills directory for %s at %s", target.Name, skillsDir)

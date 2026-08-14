@@ -6,17 +6,15 @@ description: Use when answering questions about the user's email — listing rec
 # remail
 
 `remail` keeps a local, read-only copy of an IMAP mailbox as ordinary files.
-Reading it never contacts the mail server and never marks mail as read, so
-these commands are always safe to run.
+Reading never contacts the mail server, so these commands are always safe.
 
 ## The mail directory
 
-Every command works on one mail directory, holding one mailbox. Run from
-inside it, or pass `--path <dir>` from anywhere. If you do not know where the
-user keeps it, ask instead of guessing.
+One directory holds one mailbox. Run from inside it or pass `--path <dir>`. If
+you do not know where the user keeps it, ask rather than guess.
 
-A directory holds the originals in `raw/` and a readable export in
-`messages/`. Read the export; treat `raw/` as the archive it is.
+Originals live in `raw/` and the readable export in `messages/`. Read the
+export.
 
 ## Commands
 
@@ -35,8 +33,7 @@ remail list --since 7d
 remail list --since 2026-08-01
 ```
 
-Each row is: id, date, attachment count, sender, subject. The id is a short
-hex string identifying the message.
+Each row is: id, date, attachment count, sender, subject.
 
 JSON output shape:
 
@@ -73,10 +70,9 @@ raw: ../../../raw/2026-08/2026-08-13T091502Z-a1b2c3d4.eml
 Body text follows here.
 ```
 
-`date` is when the server received the message and is reliable. `sent` is the
-sender's own Date header and is not. HTML-only mail is converted to Markdown,
-so links and tables survive; `converted: true` marks those. `raw` points at the
-untouched original, which carries the full headers when you need them.
+`date` is the server's receipt time and is reliable; `sent` is the sender's own
+header and is not. HTML-only mail is converted to Markdown, marked
+`converted: true`. `raw` points at the original, which has the full headers.
 
 An ambiguous prefix is an error naming the candidates, never a guess.
 
@@ -89,8 +85,7 @@ remail files a1b2
 remail files a1b2 --inline    # also images embedded in the body
 ```
 
-Images embedded in the body are excluded by default so they do not bury real
-attachments.
+Embedded images are excluded by default so they do not bury real attachments.
 
 JSON output shape:
 
@@ -106,8 +101,8 @@ Fetch mail that arrived since the last run.
 remail sync
 ```
 
-Needs network access and may prompt for a keychain password, so prefer reading
-what is already on disk unless the user asks for fresh mail. Safe to interrupt.
+Needs network and may prompt for a password, so prefer what is already on
+disk unless the user asks for fresh mail. Safe to interrupt.
 
 JSON output shape:
 
@@ -122,28 +117,26 @@ runs this once; you rarely need it.
 
 ### skill
 
-`remail skill` prints this document, and `remail skill --install` writes it
-into an agent's skills directory. Run the install form after upgrading remail
-to refresh a stale copy of these instructions.
+`remail skill --install` rewrites this document into an agent's skills
+directory. Run it after upgrading remail to refresh a stale copy.
 
 ## Searching
 
-The mailbox is just files, so search it directly rather than reading messages
-one at a time:
+The mailbox is just files, so search it rather than reading messages one at a
+time:
 
 ```sh
 rg -l 'invoice' <mail-dir>/messages
 ```
 
-Each hit sits in a directory named `<date>-<subject>-<id>`, so the id you need
-for `read` and `files` is already in the path.
+Each hit sits in a directory named `<date>-<subject>-<id>`, so the id is
+already in the path.
 
 ## JSON output and errors
 
-Every command accepts `--json` and emits a single JSON object on stdout. Plain
-text and JSON are never mixed in one invocation.
-
-On failure, `--json` mode emits the standard envelope and exits non-zero:
+Every command accepts `--json` and emits one JSON object on stdout; plain text
+and JSON are never mixed. On failure it emits this envelope and exits
+non-zero:
 
     { "error": { "message": "..." } }
 
@@ -152,4 +145,4 @@ On failure, `--json` mode emits the standard envelope and exits non-zero:
 - Do not modify or delete anything in the mail directory. `raw/` holds the only
   copy of the originals.
 - Do not parse `.eml` files yourself. `read` has already decoded the MIME
-  structure, character sets, and encoded headers.
+  structure, character sets, and headers.

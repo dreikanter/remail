@@ -2,7 +2,7 @@
 //
 //	<root>/remail.json                     config
 //	<root>/.remail/state.json              sync bookkeeping
-//	<root>/raw/2026-08/<date>-<id>.eml     source of truth, never modified
+//	<root>/raw/2026-08/<stamp>-<id>.eml    source of truth, never modified
 //	<root>/messages/2026-08/<date>-<slug>-<id>/
 //	    message.md                         readable text, YAML frontmatter
 //	    message.html                       original HTML, when present
@@ -17,7 +17,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -43,13 +42,10 @@ const (
 	maxSlugLen = 60
 )
 
-// ID derives a message's stable identifier: the first 8 hex characters of the
-// SHA-256 of its Message-ID header.
-//
-// Using the header rather than the IMAP UID means the id survives a
-// UIDVALIDITY reset, is identical across providers, and collapses Gmail's
-// per-label duplicates of the same message onto one entry. Messages with no
-// Message-ID (rare, but legal) fall back to hashing the raw bytes.
+// ID is the first 8 hex characters of the SHA-256 of a message's Message-ID.
+// Using the header rather than the IMAP UID means the id survives a UIDVALIDITY
+// reset and collapses Gmail's per-label duplicates. Messages with no
+// Message-ID, which is legal, fall back to hashing the raw bytes.
 func ID(messageID string, raw []byte) string {
 	messageID = strings.TrimSpace(messageID)
 	var sum [sha256.Size]byte
@@ -66,11 +62,8 @@ func Shard(t time.Time) string { return t.UTC().Format("2006-01") }
 
 func day(t time.Time) string { return t.UTC().Format("2006-01-02") }
 
-// rawStamp is the timestamp format embedded in raw filenames.
-//
-// The full receipt time is carried here, not just the date, so rebuilding
-// messages/ from raw/ recovers the exact timestamp without consulting any other
-// file. That is what lets messages/ be deleted outright and regenerated.
+// rawStamp carries the full receipt time, not just the date, so rebuilding
+// messages/ needs nothing but raw/.
 const rawStamp = "2006-01-02T150405Z"
 
 // RawPath is where a message's original bytes live, relative to root.
@@ -106,11 +99,9 @@ func MessageDir(root string, t time.Time, subject, id string) string {
 	return filepath.Join(root, MessagesDir, Shard(t), name)
 }
 
-// Slug renders a subject as a filesystem-safe directory fragment.
-//
-// Letters and digits survive (including non-Latin ones, which keeps subjects
-// readable in `ls` for non-English mail); everything else collapses to a single
-// hyphen. Path separators are not letters or digits, so they cannot survive.
+// Slug renders a subject as a filesystem-safe directory fragment. Letters and
+// digits survive, including non-Latin ones; everything else collapses to a
+// hyphen. Path separators are neither, so they cannot survive.
 func Slug(subject string) string {
 	var b strings.Builder
 	var pendingSep bool
@@ -134,9 +125,9 @@ func Slug(subject string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// WriteRaw stores original message bytes, creating parents as needed. It
-// reports whether the file was newly written; an existing file is left alone
-// because raw/ is append-only and byte-identical on a refetch.
+// WriteRaw stores original message bytes and reports whether it wrote them.
+// An existing file is left alone: raw/ is append-only and a refetch is
+// byte-identical.
 func WriteRaw(root string, t time.Time, id string, raw []byte) (string, bool, error) {
 	path := RawPath(root, t, id)
 	if _, err := os.Stat(path); err == nil {
@@ -153,8 +144,7 @@ func WriteRaw(root string, t time.Time, id string, raw []byte) (string, bool, er
 // ReadRaw returns the stored bytes for a raw path.
 func ReadRaw(path string) ([]byte, error) { return os.ReadFile(path) }
 
-// RawFiles lists every stored .eml under root, oldest first. Used to rebuild
-// messages/ from the source of truth.
+// RawFiles lists every stored .eml under root, oldest first.
 func RawFiles(root string) ([]string, error) {
 	base := filepath.Join(root, RawDir)
 	var files []string
@@ -187,13 +177,4 @@ func EnsureLayout(root string) error {
 		}
 	}
 	return nil
-}
-
-// CopyInto streams src into a file, used for attachments so a large one never
-// needs to be buffered in memory.
-func CopyInto(path string, src io.Reader) error {
-	return atomicfile.WriteFrom(path, func(w io.Writer) error {
-		_, err := io.Copy(w, src)
-		return err
-	}, 0o600)
 }

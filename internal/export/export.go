@@ -1,10 +1,8 @@
-// Package export turns a stored .eml into the readable form: message.md with
-// YAML frontmatter, the original HTML when there was one, and attachments as
-// ordinary files.
+// Package export turns a stored .eml into message.md, the original HTML, and
+// attachment files.
 //
-// Everything this package writes is derived. The messages/ tree can be deleted
-// at any time and rebuilt from raw/, which is what keeps the archive portable
-// across future changes to this format.
+// Everything here is derived: messages/ can be deleted at any time and rebuilt
+// from raw/.
 package export
 
 import (
@@ -23,36 +21,28 @@ import (
 	"github.com/emersion/go-message"
 	"github.com/emersion/go-message/mail"
 
-	// Registers decoders for legacy charsets so ISO-8859, KOI8, and CJK mail
-	// comes out as UTF-8 rather than mojibake.
+	// Legacy charset decoders, so ISO-8859, KOI8, and CJK mail is not mojibake.
 	_ "github.com/emersion/go-message/charset"
 
 	"github.com/dreikanter/remail/internal/atomicfile"
 	"github.com/dreikanter/remail/internal/store"
 )
 
-// Format is the export layout version. Raising it makes sync rebuild every
-// message directory from raw/ on the next run.
+// Format is the export layout version. Raising it makes sync rebuild
+// messages/ from raw/.
 const Format = 1
 
-// Thresholds for deciding between a text/plain part and the converted HTML
-// when a message carries both.
-//
-// Senders frequently ship a placeholder plain part ("View this email in your
-// browser") beside the real content. Two signals identify one: a part that is
-// short in absolute terms while the HTML carries more, or a part dwarfed by the
-// HTML regardless of its own size. Neither test can lose information, because
-// message.html is written either way and raw/ always holds the original.
+// Thresholds for spotting a placeholder plain part ("View this email in your
+// browser") shipped beside the real HTML: short in absolute terms, or dwarfed
+// by the HTML.
 const (
 	stubMaxLen = 200
 	stubRatio  = 10
 )
 
-// IdentifyID returns a message's stable id without exporting it.
-//
-// The id is needed before the raw file can be placed, since it is part of the
-// path. Only the header is parsed here; go-message reads bodies lazily, so this
-// does not cost a second full pass over the message.
+// IdentifyID returns a message's stable id, needed before the raw file can be
+// placed because it is part of the path. Bodies are read lazily, so this parses
+// only the header.
 func IdentifyID(raw []byte) (string, error) {
 	entity, err := message.Read(bytes.NewReader(raw))
 	if err != nil && !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err) {
@@ -65,9 +55,7 @@ func IdentifyID(raw []byte) (string, error) {
 }
 
 // Message writes the exported form of one message and returns its index record.
-//
-// The message directory is replaced wholesale rather than merged, so a re-export
-// after a format change cannot leave stale attachments behind.
+// The directory is replaced wholesale, so a re-export leaves no stale files.
 func Message(root, rawPath string, raw []byte, date time.Time) (*store.Message, error) {
 	entity, err := message.Read(bytes.NewReader(raw))
 	if err != nil && !message.IsUnknownCharset(err) && !message.IsUnknownEncoding(err) {
@@ -101,8 +89,7 @@ func Message(root, rawPath string, raw []byte, date time.Time) (*store.Message, 
 	if err != nil {
 		return nil, err
 	}
-	// Inline parts are written before the body is rendered so their final
-	// filenames are known and cid: references can be pointed at them.
+	// Written before the body so cid: references can point at final filenames.
 	inline, err := writeParts(filepath.Join(dir, store.InlineDir), p.Inline)
 	if err != nil {
 		return nil, err
@@ -155,8 +142,8 @@ func Message(root, rawPath string, raw []byte, date time.Time) (*store.Message, 
 	return &store.Message{Frontmatter: *fm, Dir: dir}, nil
 }
 
-// cidMap pairs each inline part's Content-ID with the filename it was actually
-// written under, which may differ after sanitizing and collision handling.
+// cidMap pairs each inline part's Content-ID with the name it was written
+// under, which sanitizing and collision handling may have changed.
 func cidMap(parts []filePart, names []string) map[string]string {
 	m := make(map[string]string, len(parts))
 	for i, part := range parts {
@@ -178,15 +165,13 @@ func chooseBody(p parts, cids map[string]string) (string, bool, error) {
 
 	md, err := toMarkdown(p.HTML)
 	if err != nil {
-		// A conversion failure must not lose the message; fall back to whatever
-		// plain text exists.
+		// Never lose the message to a conversion failure.
 		if plain != "" {
 			return plain, false, nil
 		}
 		return "", false, fmt.Errorf("convert HTML body: %w", err)
 	}
-	// A cid: URL only means something to a mail client. Repointing it at the
-	// saved file makes the image resolve in any markdown viewer or editor.
+	// A cid: URL resolves only in a mail client; point it at the saved file.
 	for cid, rel := range cids {
 		md = strings.ReplaceAll(md, "cid:"+cid, rel)
 	}
@@ -208,17 +193,15 @@ func isStub(plain, md string) bool {
 	return len(plain)*stubRatio < len(md)
 }
 
-// toMarkdown converts an HTML body. Markdown is used rather than flat text
-// because it preserves link targets, headings, and tables while staying
-// greppable and readable in a plain editor.
+// toMarkdown converts an HTML body. Markdown rather than flat text, because it
+// keeps link targets and structure while staying greppable.
 func toMarkdown(html string) (string, error) {
 	conv := converter.NewConverter(
 		converter.WithPlugins(
 			base.NewBasePlugin(),
 			commonmark.NewCommonmarkPlugin(),
-			// The table plugin ignores layout tables marked
-			// role="presentation", which is how most marketing mail is built,
-			// and renders only genuine data tables.
+			// Renders data tables and ignores role="presentation" layout
+			// tables, which is how most marketing mail is built.
 			table.NewTablePlugin(),
 		),
 	)
@@ -256,9 +239,8 @@ func addrLists(h *mail.Header, key string) []string {
 
 	out := make([]string, 0, len(list))
 	for _, a := range list {
-		// Built by hand rather than with Address.String(), which quotes every
-		// display name. This value is read by humans and by `list`; the
-		// round-trippable form is in raw/ if it is ever needed.
+		// Not Address.String(), which quotes every display name. This is read
+		// by humans; the round-trippable form is in raw/.
 		if a.Name != "" {
 			out = append(out, fmt.Sprintf("%s <%s>", a.Name, a.Address))
 		} else {
