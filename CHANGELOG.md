@@ -18,6 +18,12 @@
 - `remail read <id>` prints a message as text on stdout.
 - `remail files <id>` prints absolute paths to a message's attachments, one per
   line, for piping into other tools.
+- `remail skill` prints a skill document that teaches an agent to read a
+  mailbox with this CLI. Pass `--install` to write it straight into an agent's
+  skills directory, detected automatically or named with `--agent`. An
+  unchanged file is reported as `skip` and left alone, an edited one as
+  `conflict` unless `--force` is given, and `--dry-run` previews the same
+  actions without writing.
 - Every command accepts `--json` for machine-readable output and `--path` to
   point at a mail directory other than the current one.
 - Messages are stored twice: the untouched original in `raw/` as an `.eml` file,

@@ -8,6 +8,7 @@ remail sync            fetch new mail
 remail list            most recent first
 remail read a1b2       print a message
 remail files a1b2      absolute paths to its attachments
+remail skill           the agent skill for this CLI
 ```
 
 ## Why
@@ -108,7 +109,18 @@ remail files a1b2 | xargs open           # open the attachments
 ## Agent use
 
 Every command takes `--json` and reports failures as `{"error": {"message": ...}}`,
-so an agent can use the same five commands without parsing tables.
+so an agent can use the same commands without parsing tables.
+
+`remail skill` prints a skill document that teaches an agent to read a mailbox
+with these commands. Install it for Claude Code with:
+
+```sh
+remail skill --install
+```
+
+That writes `~/.claude/skills/remail/SKILL.md`. Re-run it after upgrading to
+refresh the copy; an unchanged file is left alone, and one you have edited is
+reported as a conflict rather than overwritten (pass `--force` to replace it).
 
 ## Reading is read-only
 
