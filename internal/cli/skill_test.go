@@ -123,8 +123,8 @@ func TestSkillInstallCreates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out, "create\tclaude\t") {
-		t.Errorf("output = %q, want a create action", out)
+	if !strings.Contains(out, "claude") || !strings.Contains(out, "create") {
+		t.Errorf("output = %q, want a create action for claude", out)
 	}
 
 	got, err := os.ReadFile(path)
@@ -159,8 +159,9 @@ func TestSkillInstallSkipsIdentical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("skip should exit zero, got %v", err)
 	}
-	if !strings.HasPrefix(out, "skip\t") {
-		t.Errorf("output = %q, want a skip action", out)
+	// The reason is the point: "skip" alone leaves the user guessing.
+	if !strings.Contains(out, "skip") || !strings.Contains(out, "already up to date") {
+		t.Errorf("output = %q, want skip to say why", out)
 	}
 
 	after, err := os.Stat(path)
@@ -185,8 +186,8 @@ func TestSkillInstallConflictsWithoutForce(t *testing.T) {
 	if err == nil {
 		t.Error("a conflict should fail the command")
 	}
-	if !strings.HasPrefix(out, "conflict\t") {
-		t.Errorf("output = %q, want a conflict action", out)
+	if !strings.Contains(out, "conflict") || !strings.Contains(out, "--force") {
+		t.Errorf("output = %q, want conflict to name the way out", out)
 	}
 
 	got, err := os.ReadFile(path)
@@ -211,7 +212,7 @@ func TestSkillInstallForceOverwrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out, "overwrite\t") {
+	if !strings.Contains(out, "overwrite") {
 		t.Errorf("output = %q, want an overwrite action", out)
 	}
 
@@ -333,9 +334,8 @@ func TestSkillInstallDetectsMultipleAgents(t *testing.T) {
 
 	original := agents
 	agents = append(append([]agentTarget{}, agents...), agentTarget{
-		Name:    "fake",
-		PathFor: func() (string, error) { return fake, nil },
-		Detect:  func() (bool, error) { return true, nil },
+		Name:      "fake",
+		SkillsDir: func() (string, error) { return filepath.Dir(filepath.Dir(fake)), nil },
 	})
 	t.Cleanup(func() { agents = original })
 
@@ -343,7 +343,7 @@ func TestSkillInstallDetectsMultipleAgents(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(out, "create\t") != 2 {
+	if strings.Count(out, "create") != 2 {
 		t.Errorf("output = %q, want one create per detected agent", out)
 	}
 }
