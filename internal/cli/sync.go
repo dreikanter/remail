@@ -13,13 +13,22 @@ import (
 
 func newSync() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "sync",
-		Short: "fetch new mail and export it",
-		Args:  cobra.NoArgs,
-		RunE:  runSync,
+		Use:   "sync [options]",
+		Short: "fetch new mail and export it to text",
+		Long: `Fetches messages that arrived since the last run, stores each original
+under raw/, and exports a readable copy under messages/. Mail is never
+marked as read and nothing is written to the server.
+
+messages/ is derived and safe to delete; it is rebuilt from raw/.
+Interrupting a sync is safe: the next run resumes where it stopped.`,
+		Example: `  remail sync
+  remail sync --offline --rebuild
+  remail --path ~/mail sync`,
+		Args: cobra.NoArgs,
+		RunE: runSync,
 	}
 	cmd.Flags().Bool("rebuild", false, "re-export every stored message from raw/")
-	cmd.Flags().Bool("offline", false, "skip the server; only rebuild from raw/")
+	cmd.Flags().Bool("offline", false, "skip the server, only rebuild from raw/")
 	return cmd
 }
 

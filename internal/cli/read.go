@@ -11,10 +11,17 @@ import (
 
 func newRead() *cobra.Command {
 	return &cobra.Command{
-		Use:   "read <id>",
-		Short: "print one message",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runRead,
+		Use:   "read <id> [options]",
+		Short: "print one message to stdout",
+		Long: `Prints a YAML frontmatter block with the headers, then the body.
+HTML-only mail is shown as Markdown, so links and tables survive.
+
+The id comes from list; any unambiguous prefix works. The frontmatter
+points at the untouched original in raw/, which has the full headers.`,
+		Example: `  remail read a1b2
+  remail read a1b2 | less`,
+		Args: cobra.ExactArgs(1),
+		RunE: runRead,
 	}
 }
 

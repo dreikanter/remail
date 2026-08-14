@@ -17,14 +17,22 @@ const keychainService = "remail"
 
 func newInit() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "init",
-		Short: "set up a mail directory",
-		Args:  cobra.NoArgs,
-		RunE:  runInit,
+		Use:   "init [options]",
+		Short: "create a mail directory and its config",
+		Long: `Creates the directory if needed, writes remail.json, and prints the
+command to store your password in the system keychain. An existing
+config is never overwritten.
+
+The config travels with the mail, so nothing lands in your home
+directory and a mailbox can be moved between machines as one folder.`,
+		Example: `  remail init --account you@gmail.com
+  remail init --account you@fastmail.com --provider fastmail --since-days 90`,
+		Args: cobra.NoArgs,
+		RunE: runInit,
 	}
-	cmd.Flags().String("account", "", "email address")
-	cmd.Flags().String("provider", "gmail", "provider preset: "+strings.Join(config.Providers(), ", "))
-	cmd.Flags().Int("since-days", 0, "only fetch mail newer than this many days (0 = all)")
+	cmd.Flags().String("account", "", "email address (required)")
+	cmd.Flags().String("provider", "gmail", "preset: "+strings.Join(config.Providers(), ", "))
+	cmd.Flags().Int("since-days", 0, "on first sync, skip mail older than this, 0 for all")
 	return cmd
 }
 

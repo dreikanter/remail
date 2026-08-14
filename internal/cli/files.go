@@ -11,12 +11,18 @@ import (
 
 func newFiles() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "files <id>",
-		Short: "print a message's attachment paths",
-		Args:  cobra.ExactArgs(1),
-		RunE:  runFiles,
+		Use:   "files <id> [options]",
+		Short: "print absolute paths to a message's attachments",
+		Long: `One absolute path per line, ready to pipe into another tool.
+
+Images embedded in the message body are left out by default, so a
+newsletter's logos and spacers do not bury the real attachments.`,
+		Example: `  remail files a1b2
+  remail files a1b2 | xargs open`,
+		Args: cobra.ExactArgs(1),
+		RunE: runFiles,
 	}
-	cmd.Flags().Bool("inline", false, "include embedded images")
+	cmd.Flags().Bool("inline", false, "also list images embedded in the body")
 	return cmd
 }
 

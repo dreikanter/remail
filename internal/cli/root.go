@@ -18,25 +18,44 @@ var Version = "dev"
 
 const summary = "remail — local, read-only mirror of an IMAP inbox"
 
-// help is the entire help text. It is deliberately one screen: a wall of
-// generated flag documentation makes a tool harder to use, not easier.
+// help is the top-level help. It aims to fit one screen while still answering
+// the questions a first-time user actually has: what the commands are, how to
+// get started, and how mail is stored.
 const help = summary + `
 
 usage: remail <command> [options]
 
-  init     set up a mail directory
-  sync     fetch new mail and export it
-  list     show messages, newest first
-  read     print one message
-  files    print a message's attachment paths
+commands:
+  init     create a mail directory and its config
+  sync     fetch new mail and export it to text
+  list     show messages, most recent first
+  read     print one message to stdout
+  files    print absolute paths to a message's attachments
 
 options:
   -p, --path <dir>   mail directory (default: current directory)
       --json         machine-readable output
       --version      print version
 
-Messages are addressed by id, or any unambiguous prefix of one:
+getting started:
+  mkdir ~/mail && cd ~/mail
+  remail init --account you@gmail.com
+  remail sync
+
+  init writes remail.json and prints the command to store your password.
+  Gmail needs an app password, not your account password.
+
+messages:
+  Each message has a short id, shown by list. Any unambiguous prefix works.
+
+  remail list --since 7d
   remail read a1b2
+  remail files a1b2 | xargs open
+
+  Mail is stored as ordinary files: untouched originals in raw/, readable
+  text and attachments in messages/. Search them with anything you like.
+
+One directory is one mailbox. Run remail <command> --help for its options.
 `
 
 // Execute runs the command line. It returns the process exit code.
@@ -91,37 +110,72 @@ func newRoot() *cobra.Command {
 	return root
 }
 
-// commandHelp renders a few lines for one subcommand: what it does, how to
-// invoke it, and only the flags it actually accepts. Global options stay in the
-// top-level help rather than being repeated under every command.
+// placeholders name the value a flag takes, so help reads "--since <when>"
+// rather than "--since string". Only flags that take a value appear here.
+var placeholders = map[string]string{
+	"path":       "dir",
+	"since":      "when",
+	"number":     "n",
+	"account":    "email",
+	"provider":   "name",
+	"since-days": "n",
+}
+
+// commandHelp renders help for one subcommand: what it does, how to invoke it,
+// the flags it accepts, and a worked example or two. Global options stay in the
+// top-level help instead of being repeated under every command.
 func commandHelp(cmd *cobra.Command) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "remail %s — %s\n\nusage: remail %s\n", cmd.Name(), cmd.Short, cmd.Use)
 
-	var flags []string
+	if flags := flagLines(cmd); len(flags) > 0 {
+		b.WriteString("\noptions:\n")
+		for _, line := range flags {
+			b.WriteString(line)
+		}
+	}
+	if cmd.Long != "" {
+		fmt.Fprintf(&b, "\n%s\n", strings.TrimSpace(cmd.Long))
+	}
+	if cmd.Example != "" {
+		fmt.Fprintf(&b, "\nexamples:\n%s\n", strings.TrimRight(cmd.Example, "\n"))
+	}
+	return b.String()
+}
+
+func flagLines(cmd *cobra.Command) []string {
+	type entry struct{ name, usage string }
+
+	var entries []entry
 	width := 0
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
 		if f.Hidden || f.Name == "help" {
 			return
 		}
-		name := "--" + f.Name
+
+		name := "    --" + f.Name
 		if f.Shorthand != "" {
-			name = "-" + f.Shorthand + ", " + name
+			name = "-" + f.Shorthand + ", --" + f.Name
 		}
+		if f.Value.Type() != "bool" {
+			if p, ok := placeholders[f.Name]; ok {
+				name += " <" + p + ">"
+			} else {
+				name += " <value>"
+			}
+		}
+
 		if len(name) > width {
 			width = len(name)
 		}
-		flags = append(flags, name+"\x00"+f.Usage)
+		entries = append(entries, entry{name, f.Usage})
 	})
 
-	if len(flags) > 0 {
-		b.WriteString("\n")
-		for _, entry := range flags {
-			name, usage, _ := strings.Cut(entry, "\x00")
-			fmt.Fprintf(&b, "  %-*s   %s\n", width, name, usage)
-		}
+	lines := make([]string, 0, len(entries))
+	for _, e := range entries {
+		lines = append(lines, fmt.Sprintf("  %-*s   %s\n", width, e.name, e.usage))
 	}
-	return b.String()
+	return lines
 }
 
 func version() string {

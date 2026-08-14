@@ -17,13 +17,18 @@ const (
 
 func newList() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "show messages, newest first",
-		Args:  cobra.NoArgs,
-		RunE:  runList,
+		Use:   "list [options]",
+		Short: "show messages, most recent first",
+		Long: `Each row is: id, date, attachment count, sender, subject.
+Use the id with read and files; any unambiguous prefix works.`,
+		Example: `  remail list -n 50
+  remail list --since 7d
+  remail list --json | jq -r '.messages[].subject'`,
+		Args: cobra.NoArgs,
+		RunE: runList,
 	}
-	cmd.Flags().IntP("number", "n", 20, "how many to show (0 = all)")
-	cmd.Flags().String("since", "", "only messages newer than this (7d, 2026-08-01)")
+	cmd.Flags().IntP("number", "n", 20, "how many to show, 0 for all")
+	cmd.Flags().String("since", "", "only mail newer than 7d or 2026-08-01")
 	return cmd
 }
 
