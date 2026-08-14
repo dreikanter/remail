@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -31,6 +32,7 @@ commands:
   list     show messages, most recent first
   read     print one message to stdout
   files    print absolute paths to a message's attachments
+  skill    print or install the agent skill for this CLI
 
 options:
   -p, --path <dir>   mail directory (default: current directory)
@@ -58,11 +60,17 @@ messages:
 One directory is one mailbox. Run remail <command> --help for its options.
 `
 
+// errSilent fails the process without printing anything further, for commands
+// whose own output already explains the failure.
+var errSilent = errors.New("silent failure")
+
 // Execute runs the command line. It returns the process exit code.
 func Execute() int {
 	root := newRoot()
 	if err := root.Execute(); err != nil {
-		reportError(root, err)
+		if !errors.Is(err, errSilent) {
+			reportError(root, err)
+		}
 		return 1
 	}
 	return 0
@@ -106,7 +114,7 @@ func newRoot() *cobra.Command {
 		fmt.Fprint(cmd.OutOrStdout(), commandHelp(cmd))
 	})
 
-	root.AddCommand(newInit(), newSync(), newList(), newRead(), newFiles())
+	root.AddCommand(newInit(), newSync(), newList(), newRead(), newFiles(), newSkill())
 	return root
 }
 
@@ -119,6 +127,7 @@ var placeholders = map[string]string{
 	"account":    "email",
 	"provider":   "name",
 	"since-days": "n",
+	"agent":      "name",
 }
 
 // commandHelp renders help for one subcommand: what it does, how to invoke it,
