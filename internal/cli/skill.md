@@ -132,6 +132,54 @@ rg -l 'invoice' <mail-dir>/messages
 Each hit sits in a directory named `<date>-<subject>-<id>`, so the id is
 already in the path.
 
+## PDF attachments
+
+Resolve the path with `remail files <id>` first, then extract the text with a
+command-line tool instead of reading the document into context. Extraction is
+what makes bulk work affordable — many attachments, or one attachment scanned
+for a couple of fields.
+
+In order of preference:
+
+```sh
+pdftotext -layout report.pdf -    # poppler; best for column-aligned documents
+uvx --python 3.12 --from 'markitdown[pdf]' markitdown report.pdf
+```
+
+`markitdown` is the portable fallback when poppler is not installed. Both flags
+are load-bearing: the PDF converter lives behind the `pdf` extra, and the
+package needs Python 3.10 or newer, so the bare `uvx markitdown` invocation
+fails on either count. Its table rendering can interleave cells from adjacent
+columns, so it suits simple layouts better than dense grids.
+
+For a document built out of table grids, a few lines of `pdfplumber` recover
+rows far more cleanly than any generic converter:
+
+```sh
+cat > /tmp/tables.py <<'EOF'
+# /// script
+# dependencies = ["pdfplumber"]
+# ///
+import sys
+
+import pdfplumber
+
+with pdfplumber.open(sys.argv[1]) as pdf:
+    for page in pdf.pages:
+        for table in page.extract_tables():
+            for row in table:
+                print("\t".join(cell or "" for cell in row))
+EOF
+uv run /tmp/tables.py report.pdf
+```
+
+Read the PDF directly instead — if you can — when the document is short, when
+its layout carries the meaning, or when the extracted text comes out ambiguous:
+a footnote, a stamp, or a signature block that extraction mangles.
+
+Extraction output goes to a scratch or temp location. Nothing in the mail
+directory is ever written to.
+
 ## JSON output and errors
 
 Every command accepts `--json` and emits one JSON object on stdout; plain text

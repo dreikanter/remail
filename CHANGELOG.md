@@ -24,6 +24,10 @@
   directory — or one named with `--agent`. Each action says why it was chosen:
   an unchanged file is skipped as already up to date, and an edited one is a
   conflict unless `--force` is given.
+- The skill document now tells agents how to work with PDF attachments:
+  extract the text with `pdftotext`, `markitdown`, or `pdfplumber` rather than
+  reading whole documents into context, and fall back to reading the PDF
+  directly when the layout carries the meaning.
 - Every command accepts `--json` for machine-readable output and `--path` to
   point at a mail directory other than the current one.
 - Messages are stored twice: the untouched `.eml` original in `raw/`, and a
