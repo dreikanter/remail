@@ -1,5 +1,5 @@
 // Package state tracks what a mail directory has already fetched, so a repeat
-// sync costs one round trip instead of a full mailbox scan.
+// sync costs one round trip.
 package state
 
 import (
@@ -25,17 +25,16 @@ const Format = 1
 type State struct {
 	Format int `json:"format"`
 
-	// ExportFormat records which export layout produced messages/. When the
-	// binary's export.Format is newer, sync rebuilds the tree from raw/.
+	// ExportFormat is the layout that produced messages/. When the binary's
+	// export.Format is newer, sync rebuilds from raw/.
 	ExportFormat int `json:"export_format"`
 
-	// UIDValidity is the server's UID epoch. If it changes, every stored UID is
-	// meaningless and the mailbox must be rescanned.
+	// UIDValidity is the server's UID epoch. A change invalidates every stored
+	// UID.
 	UIDValidity uint32 `json:"uidvalidity"`
 
-	// Fetched is every UID successfully written to raw/, kept so a future prune
-	// can diff local state against the server. Recording only the high-water
-	// mark would make remote deletions undetectable after the fact.
+	// Fetched is every UID written to raw/. A high-water mark alone would make
+	// remote deletions undetectable, so a future prune needs the whole set.
 	Fetched UIDSet `json:"fetched"`
 
 	LastSync time.Time `json:"last_sync,omitzero"`
@@ -44,8 +43,7 @@ type State struct {
 // Path returns the state file path for a mail directory.
 func Path(dir string) string { return filepath.Join(dir, Dir, FileName) }
 
-// Load reads state for a mail directory. A missing file yields a zero state,
-// which is what a first sync expects.
+// Load reads state for a mail directory. A missing file yields a zero state.
 func Load(dir string) (*State, error) {
 	data, err := os.ReadFile(Path(dir))
 	if err != nil {
@@ -80,7 +78,7 @@ func (s *State) Save(dir string) error {
 func (s *State) NextUID() uint32 { return s.Fetched.Max() + 1 }
 
 // Reset clears fetch progress after a UIDVALIDITY change, keeping the export
-// format so an unnecessary rebuild is not triggered.
+// format so no needless rebuild is triggered.
 func (s *State) Reset(uidValidity uint32) {
 	s.UIDValidity = uidValidity
 	s.Fetched = UIDSet{}

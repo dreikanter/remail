@@ -1,9 +1,6 @@
-// Package atomicfile writes files so that readers never observe a partial one.
-//
-// Every write lands in a temp file in the destination directory and is then
-// renamed into place. Rename within a filesystem is atomic, so a file either
-// exists complete or does not exist at all. An interrupted sync therefore
-// leaves no truncated .eml that a later run would mistake for a full message.
+// Package atomicfile writes via a temp file plus rename, so readers never
+// observe a partial file and an interrupted run leaves nothing that looks
+// complete.
 package atomicfile
 
 import (
@@ -21,8 +18,8 @@ func Write(path string, data []byte, perm os.FileMode) error {
 	}, perm)
 }
 
-// WriteFrom creates path from a streaming writer, so large attachments never
-// need to be held in memory in full.
+// WriteFrom creates path from a streaming writer, for content too large to
+// hold in memory.
 func WriteFrom(path string, fn func(io.Writer) error, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -46,8 +43,7 @@ func WriteFrom(path string, fn func(io.Writer) error, perm os.FileMode) error {
 	if err := fn(tmp); err != nil {
 		return err
 	}
-	// Flush to disk before the rename; otherwise a crash can leave the renamed
-	// file present but empty.
+	// Without this a crash can leave the renamed file present but empty.
 	if err := tmp.Sync(); err != nil {
 		return err
 	}

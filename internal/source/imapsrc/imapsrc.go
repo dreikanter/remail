@@ -1,9 +1,8 @@
 // Package imapsrc implements source.Source over IMAP.
 //
-// Read-only is structural rather than a matter of care: the mailbox is opened
-// with EXAMINE and bodies are fetched with the PEEK variant, so neither
-// selecting the mailbox nor reading a message can set \Seen. No code path here
-// issues STORE, APPEND, EXPUNGE, or COPY.
+// Read-only is structural: the mailbox is opened with EXAMINE and bodies are
+// fetched with PEEK, so nothing here can set \Seen. No code path issues STORE,
+// APPEND, EXPUNGE, or COPY.
 package imapsrc
 
 import (
@@ -25,8 +24,8 @@ type Client struct {
 	uidValidity uint32
 }
 
-// Config is what imapsrc needs to connect. It is a plain struct rather than the
-// config package's type so this backend does not depend on the file format.
+// Config is what imapsrc needs to connect, kept separate from the config
+// package so this backend does not depend on the file format.
 type Config struct {
 	Addr     string
 	Host     string
@@ -88,9 +87,8 @@ func (cl *Client) List(ctx context.Context, fromUID uint32, since time.Time) ([]
 		return nil, nil
 	}
 
-	// A "N:*" range always matches the last message in the mailbox even when
-	// its UID is below N, so the server can hand back a message already
-	// fetched. Filtering here is what keeps an idle sync a genuine no-op.
+	// "N:*" always matches the last message even when its UID is below N, so
+	// filtering here is what keeps an idle sync a no-op.
 	kept := uids[:0]
 	for _, uid := range uids {
 		if uint32(uid) >= fromUID {
@@ -143,8 +141,7 @@ func (cl *Client) Fetch(ctx context.Context, ref source.Ref) ([]byte, error) {
 		return nil, err
 	}
 
-	// Peek is what makes reading a message leave \Seen untouched. Without it
-	// the archive would silently mark the user's mail as read.
+	// Without Peek, archiving would mark the user's mail as read.
 	section := &imap.FetchItemBodySection{Peek: true}
 
 	cmd := cl.c.Fetch(imap.UIDSetNum(imap.UID(ref.UID)), &imap.FetchOptions{

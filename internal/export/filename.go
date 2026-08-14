@@ -8,20 +8,15 @@ import (
 	"unicode"
 )
 
-// maxFilenameLen keeps names well inside the 255-byte limit common to ext4,
-// APFS, and HFS+ even after a dedupe suffix is appended.
+// maxFilenameLen stays inside the 255-byte limit common to ext4, APFS, and
+// HFS+ even after a dedupe suffix.
 const maxFilenameLen = 100
 
-// sanitizeFilename turns an attachment's declared filename into something safe
-// to create inside a message directory.
-//
-// The name arrives from the network and is fully attacker-controlled: writing
-// it verbatim is a path traversal bug, since "../../.ssh/authorized_keys" is a
-// perfectly legal MIME filename parameter. Everything here is about making the
-// result a single, harmless path component.
+// sanitizeFilename reduces an attachment's declared filename to a single, safe
+// path component. The name is attacker-controlled, and "../../.ssh/authorized_keys"
+// is a legal MIME filename parameter.
 func sanitizeFilename(name string, index int, mediaType string) string {
-	// Cut anything that could be read as a directory, on either separator
-	// convention: a Windows-style "..\\..\\x" must not survive on Unix.
+	// Cut anything readable as a directory on either separator convention.
 	name = strings.ReplaceAll(name, "\\", "/")
 	if i := strings.LastIndex(name, "/"); i >= 0 {
 		name = name[i+1:]
@@ -38,7 +33,7 @@ func sanitizeFilename(name string, index int, mediaType string) string {
 		return r
 	}, name)
 
-	// A leading dot would hide the file; "." and ".." are not names at all.
+	// A leading dot hides the file; "." and ".." are not names.
 	name = strings.TrimLeft(name, ". ")
 	name = strings.TrimRight(name, " ")
 
@@ -56,8 +51,7 @@ func fallbackName(index int, mediaType string) string {
 	return fmt.Sprintf("part-%d%s", index, ext)
 }
 
-// truncateName shortens a name while keeping its extension, cutting on rune
-// boundaries so a multi-byte name never ends in a broken character.
+// truncateName keeps the extension and cuts on rune boundaries.
 func truncateName(name string, limit int) string {
 	if len(name) <= limit {
 		return name
@@ -80,8 +74,7 @@ func truncateName(name string, limit int) string {
 	return stem + ext
 }
 
-// uniqueName resolves collisions within one message directory by inserting a
-// counter before the extension: invoice.pdf, invoice-2.pdf, invoice-3.pdf.
+// uniqueName resolves collisions as invoice.pdf, invoice-2.pdf, invoice-3.pdf.
 func uniqueName(taken map[string]bool, name string) string {
 	if !taken[strings.ToLower(name)] {
 		taken[strings.ToLower(name)] = true

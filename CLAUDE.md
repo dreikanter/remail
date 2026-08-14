@@ -30,6 +30,19 @@ make update
 
 Run `make lint` before committing or creating a PR to catch issues early.
 
+## Documentation
+
+The CLI surface is described in three places. Any PR that adds, removes, or
+changes a command, a flag, an output column, or a JSON field must update all
+three in the same PR, or they drift apart and start lying:
+
+- the skill document behind `remail skill`, which is what an agent reads
+- `README.md`
+- the command help text in `internal/cli`
+
+Keep the skill document practical: what an agent needs to read a mailbox, not
+an exhaustive flag reference.
+
 ## Commits
 
 - One logical change per commit (atomic commits)
