@@ -76,35 +76,51 @@ func loadSkill() Skill {
 	}
 }
 
-// agentTarget is one agent this skill can be installed for.
+const skillDirName = "remail"
+
+// sharedAgent is the cross-client skills directory. Codex, pi, and others read
+// it in addition to their own, so one copy there serves all of them.
+const sharedAgent = "agents"
+
+// agentTarget is one agent this skill can be installed for. SkillsDir is a
+// function so an agent with a different layout, or an environment override, can
+// still be added.
 type agentTarget struct {
-	Name    string
-	PathFor func() (string, error)
-	Detect  func() (bool, error)
+	Name      string
+	SkillsDir func() (string, error)
+
+	// SharesAgentsDir marks an agent that also reads the shared directory.
+	// Installing to both would register the same skill with it twice.
+	SharesAgentsDir bool
 }
 
-var agents = []agentTarget{
-	{Name: "claude", PathFor: claudeSkillPath, Detect: claudeDetect},
-}
-
-func claudeSkillsDir() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("resolve home directory: %w", err)
+// homeAgent describes an agent that reads <home>/<dir>/skills/<name>/SKILL.md,
+// which is the layout every supported agent uses today.
+func homeAgent(name, dir string) agentTarget {
+	return agentTarget{
+		Name: name,
+		SkillsDir: func() (string, error) {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return "", fmt.Errorf("resolve home directory: %w", err)
+			}
+			return filepath.Join(home, dir, "skills"), nil
+		},
 	}
-	return filepath.Join(home, ".claude", "skills"), nil
 }
 
-func claudeSkillPath() (string, error) {
-	dir, err := claudeSkillsDir()
+// PathFor is where this agent's copy of the skill belongs.
+func (a agentTarget) PathFor() (string, error) {
+	dir, err := a.SkillsDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(dir, skillDirName, "SKILL.md"), nil
 }
 
-func claudeDetect() (bool, error) {
-	dir, err := claudeSkillsDir()
+// Detect reports whether the agent's skills directory exists.
+func (a agentTarget) Detect() (bool, error) {
+	dir, err := a.SkillsDir()
 	if err != nil {
 		return false, err
 	}
@@ -118,7 +134,33 @@ func claudeDetect() (bool, error) {
 	return info.IsDir(), nil
 }
 
-const skillDirName = "remail"
+// envDir resolves a skills directory from an environment variable, falling back
+// to a path under the home directory. Both Codex and pi let the user relocate
+// their configuration, so neither can be hardcoded.
+func envDir(env string, fallback ...string) func() (string, error) {
+	return func() (string, error) {
+		if v := os.Getenv(env); v != "" {
+			return filepath.Join(v, "skills"), nil
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve home directory: %w", err)
+		}
+		return filepath.Join(home, filepath.Join(fallback...), "skills"), nil
+	}
+}
+
+var agents = []agentTarget{
+	homeAgent("claude", ".claude"),
+
+	// Codex still reads $CODEX_HOME/skills, but treats it as superseded.
+	{Name: "codex", SkillsDir: envDir("CODEX_HOME", ".codex"), SharesAgentsDir: true},
+
+	// pi keeps its agent configuration under ~/.pi/agent, not ~/.agent.
+	{Name: "pi", SkillsDir: envDir("PI_CODING_AGENT_DIR", ".pi", "agent"), SharesAgentsDir: true},
+
+	homeAgent(sharedAgent, ".agents"),
+}
 
 // installAction is what happened, or would happen, for one agent.
 //
@@ -221,7 +263,30 @@ func resolveTargets(agent string) ([]agentTarget, error) {
 	if len(detected) == 0 {
 		return nil, fmt.Errorf("no supported agent found; pass --agent (supported: %s)", agentNames())
 	}
-	return detected, nil
+	return dropCoveredBySharedDir(detected), nil
+}
+
+// dropCoveredBySharedDir keeps auto-detection from installing two copies that
+// one agent would both load. Naming an agent explicitly still uses its own
+// directory.
+func dropCoveredBySharedDir(detected []agentTarget) []agentTarget {
+	var hasShared bool
+	for _, a := range detected {
+		if a.Name == sharedAgent {
+			hasShared = true
+		}
+	}
+	if !hasShared {
+		return detected
+	}
+
+	kept := detected[:0]
+	for _, a := range detected {
+		if !a.SharesAgentsDir {
+			kept = append(kept, a)
+		}
+	}
+	return kept
 }
 
 // planInstall decides what to do without touching the filesystem, so a dry run
@@ -248,7 +313,7 @@ func planOne(target agentTarget, doc string, force bool) installAction {
 	// for a tool the user may not have, so a missing one is reported.
 	skillsDir := filepath.Dir(filepath.Dir(path))
 	if info, err := os.Stat(skillsDir); err != nil || !info.IsDir() {
-		action.Error = fmt.Sprintf("no skills directory for %s at %s", target.Name, skillsDir)
+		action.Error = fmt.Sprintf("no skills directory at %s", skillsDir)
 		return action
 	}
 
@@ -286,18 +351,54 @@ func reportInstall(cmd *cobra.Command, actions []installAction) error {
 		}{actions})
 	}
 
+	width := 0
 	for _, a := range actions {
-		line := a.Action
-		if line == "" {
-			line = "error"
+		if n := len(a.Agent); n > width {
+			width = n
 		}
-		fmt.Fprintf(out(cmd), "%s\t%s\t%s", line, a.Agent, a.Path)
-		if a.Error != "" {
-			fmt.Fprintf(out(cmd), "\t%s", a.Error)
+	}
+
+	for _, a := range actions {
+		verb, reason := describe(a)
+		fmt.Fprintf(out(cmd), "%-*s  %-9s %s", width, a.Agent, verb, shortenHome(a.Path))
+		if reason != "" {
+			fmt.Fprintf(out(cmd), "  (%s)", reason)
 		}
 		fmt.Fprintln(out(cmd))
 	}
 	return nil
+}
+
+// describe pairs an action with why it happened. Without the reason, "skip" and
+// "conflict" leave the user guessing at what the command decided.
+//
+// The wording stays tense-neutral so a dry run reads the same as a real one.
+func describe(a installAction) (verb, reason string) {
+	switch {
+	case a.Error != "":
+		return "error", a.Error
+	case a.Action == "skip":
+		return a.Action, "already up to date"
+	case a.Action == "overwrite":
+		return a.Action, "replacing local changes"
+	case a.Action == "conflict":
+		return a.Action, "edited locally, pass --force to replace"
+	default:
+		return a.Action, ""
+	}
+}
+
+// shortenHome trims the home directory to ~ so a long install path does not
+// crowd out the reason beside it.
+func shortenHome(path string) string {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return path
+	}
+	if rest, ok := strings.CutPrefix(path, home+string(filepath.Separator)); ok {
+		return "~" + string(filepath.Separator) + rest
+	}
+	return path
 }
 
 func installFailed(actions []installAction) bool {

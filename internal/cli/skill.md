@@ -117,8 +117,8 @@ runs this once; you rarely need it.
 
 ### skill
 
-`remail skill --install` rewrites this document into an agent's skills
-directory. Run it after upgrading remail to refresh a stale copy.
+`remail skill --install` rewrites this document into the skills directory of
+every agent it detects. Run it after upgrading remail to refresh a stale copy.
 
 ## Searching
 

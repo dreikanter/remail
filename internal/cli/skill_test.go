@@ -24,19 +24,31 @@ func run(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
-// sandbox points HOME at a temp dir and creates the Claude skills directory,
-// so installs never touch the real home directory.
+// sandbox prepares a home with only Claude installed, and returns where its
+// copy of the skill belongs.
 func sandbox(t *testing.T) string {
+	t.Helper()
+	home := sandboxHome(t, ".claude/skills")
+	return filepath.Join(home, ".claude", "skills", skillDirName, "SKILL.md")
+}
+
+// sandboxHome points HOME at a temp dir and creates the given skills
+// directories inside it, so installs never touch the real home directory.
+func sandboxHome(t *testing.T, dirs ...string) string {
 	t.Helper()
 
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	// Neither override may leak in from the developer's own environment.
+	t.Setenv("CODEX_HOME", "")
+	t.Setenv("PI_CODING_AGENT_DIR", "")
 
-	dir := filepath.Join(home, ".claude", "skills")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
+	for _, d := range dirs {
+		if err := os.MkdirAll(filepath.Join(home, filepath.FromSlash(d)), 0o755); err != nil {
+			t.Fatal(err)
+		}
 	}
-	return filepath.Join(dir, skillDirName, "SKILL.md")
+	return home
 }
 
 func TestSkillPrintsDocument(t *testing.T) {
@@ -123,8 +135,8 @@ func TestSkillInstallCreates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out, "create\tclaude\t") {
-		t.Errorf("output = %q, want a create action", out)
+	if !strings.Contains(out, "claude") || !strings.Contains(out, "create") {
+		t.Errorf("output = %q, want a create action for claude", out)
 	}
 
 	got, err := os.ReadFile(path)
@@ -159,8 +171,9 @@ func TestSkillInstallSkipsIdentical(t *testing.T) {
 	if err != nil {
 		t.Fatalf("skip should exit zero, got %v", err)
 	}
-	if !strings.HasPrefix(out, "skip\t") {
-		t.Errorf("output = %q, want a skip action", out)
+	// The reason is the point: "skip" alone leaves the user guessing.
+	if !strings.Contains(out, "skip") || !strings.Contains(out, "already up to date") {
+		t.Errorf("output = %q, want skip to say why", out)
 	}
 
 	after, err := os.Stat(path)
@@ -185,8 +198,8 @@ func TestSkillInstallConflictsWithoutForce(t *testing.T) {
 	if err == nil {
 		t.Error("a conflict should fail the command")
 	}
-	if !strings.HasPrefix(out, "conflict\t") {
-		t.Errorf("output = %q, want a conflict action", out)
+	if !strings.Contains(out, "conflict") || !strings.Contains(out, "--force") {
+		t.Errorf("output = %q, want conflict to name the way out", out)
 	}
 
 	got, err := os.ReadFile(path)
@@ -211,7 +224,7 @@ func TestSkillInstallForceOverwrites(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(out, "overwrite\t") {
+	if !strings.Contains(out, "overwrite") {
 		t.Errorf("output = %q, want an overwrite action", out)
 	}
 
@@ -321,29 +334,97 @@ func TestSkillRejectsInstallOnlyFlags(t *testing.T) {
 	}
 }
 
-// Auto-detection must handle more than one agent once a second is registered.
+// Auto-detection installs to every agent it finds.
 func TestSkillInstallDetectsMultipleAgents(t *testing.T) {
-	sandbox(t)
-
-	dir := t.TempDir()
-	fake := filepath.Join(dir, "skills", skillDirName, "SKILL.md")
-	if err := os.MkdirAll(filepath.Dir(fake), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	original := agents
-	agents = append(append([]agentTarget{}, agents...), agentTarget{
-		Name:    "fake",
-		PathFor: func() (string, error) { return fake, nil },
-		Detect:  func() (bool, error) { return true, nil },
-	})
-	t.Cleanup(func() { agents = original })
+	home := sandboxHome(t, ".claude/skills", ".codex/skills")
 
 	out, err := run(t, "skill", "--install")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(out, "create\t") != 2 {
+	if strings.Count(out, "create") != 2 {
 		t.Errorf("output = %q, want one create per detected agent", out)
+	}
+	for _, rel := range []string{".claude/skills", ".codex/skills"} {
+		path := filepath.Join(home, filepath.FromSlash(rel), skillDirName, "SKILL.md")
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("not installed at %s: %v", rel, err)
+		}
+	}
+}
+
+// Codex and pi read the shared ~/.agents/skills directory as well as their own.
+// Auto-detection must not hand them the same skill twice.
+func TestSkillInstallPrefersSharedDir(t *testing.T) {
+	home := sandboxHome(t, ".agents/skills", ".codex/skills", ".pi/agent/skills")
+
+	out, err := run(t, "skill", "--install")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if strings.Contains(out, "codex") || strings.Contains(out, "pi ") {
+		t.Errorf("output = %q, want codex and pi covered by the shared directory", out)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".agents", "skills", skillDirName, "SKILL.md")); err != nil {
+		t.Errorf("shared directory not installed: %v", err)
+	}
+	for _, rel := range []string{".codex/skills", ".pi/agent/skills"} {
+		path := filepath.Join(home, filepath.FromSlash(rel), skillDirName, "SKILL.md")
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("duplicate copy written to %s", rel)
+		}
+	}
+}
+
+// Naming an agent explicitly still uses its own directory.
+func TestSkillInstallExplicitAgentIgnoresSharedDir(t *testing.T) {
+	home := sandboxHome(t, ".agents/skills", ".codex/skills")
+
+	if _, err := run(t, "skill", "--install", "--agent", "codex"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".codex", "skills", skillDirName, "SKILL.md")); err != nil {
+		t.Errorf("explicit --agent codex did not install to ~/.codex: %v", err)
+	}
+}
+
+// Both agents let the user relocate their configuration directory.
+func TestSkillInstallHonorsEnvOverrides(t *testing.T) {
+	cases := []struct {
+		agent, env string
+	}{
+		{"codex", "CODEX_HOME"},
+		{"pi", "PI_CODING_AGENT_DIR"},
+	}
+
+	for _, c := range cases {
+		t.Run(c.agent, func(t *testing.T) {
+			t.Setenv("HOME", t.TempDir())
+			root := t.TempDir()
+			t.Setenv(c.env, root)
+			if err := os.MkdirAll(filepath.Join(root, "skills"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+
+			if _, err := run(t, "skill", "--install", "--agent", c.agent); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := os.Stat(filepath.Join(root, "skills", skillDirName, "SKILL.md")); err != nil {
+				t.Errorf("%s did not follow %s: %v", c.agent, c.env, err)
+			}
+		})
+	}
+}
+
+// pi keeps its configuration under ~/.pi/agent; ~/.agent is not a path it uses.
+func TestSkillPiUsesNestedAgentDir(t *testing.T) {
+	home := sandboxHome(t, ".pi/agent/skills")
+
+	if _, err := run(t, "skill", "--install", "--agent", "pi"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(home, ".pi", "agent", "skills", skillDirName, "SKILL.md")); err != nil {
+		t.Errorf("pi skill not installed under ~/.pi/agent: %v", err)
 	}
 }
