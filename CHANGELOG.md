@@ -19,9 +19,11 @@
 - `remail files <id>` prints absolute paths to a message's attachments, one per
   line, for piping into other tools.
 - `remail skill` prints a skill document that teaches an agent to read a
-  mailbox with this CLI. `--install` writes it into an agent's skills directory,
-  detected automatically or named with `--agent`. An unchanged file is skipped
-  and an edited one is a conflict unless `--force` is given.
+  mailbox with this CLI. `--install` writes it into the skills directory of
+  every detected agent — Claude Code, Codex, pi, and the shared `~/.agents`
+  directory — or one named with `--agent`. Each action says why it was chosen:
+  an unchanged file is skipped as already up to date, and an edited one is a
+  conflict unless `--force` is given.
 - Every command accepts `--json` for machine-readable output and `--path` to
   point at a mail directory other than the current one.
 - Messages are stored twice: the untouched `.eml` original in `raw/`, and a

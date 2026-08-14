@@ -78,12 +78,20 @@ func loadSkill() Skill {
 
 const skillDirName = "remail"
 
+// sharedAgent is the cross-client skills directory. Codex, pi, and others read
+// it in addition to their own, so one copy there serves all of them.
+const sharedAgent = "agents"
+
 // agentTarget is one agent this skill can be installed for. SkillsDir is a
-// function rather than a path so an agent that does not keep its skills under
-// the home directory can still be added.
+// function so an agent with a different layout, or an environment override, can
+// still be added.
 type agentTarget struct {
 	Name      string
 	SkillsDir func() (string, error)
+
+	// SharesAgentsDir marks an agent that also reads the shared directory.
+	// Installing to both would register the same skill with it twice.
+	SharesAgentsDir bool
 }
 
 // homeAgent describes an agent that reads <home>/<dir>/skills/<name>/SKILL.md,
@@ -126,8 +134,32 @@ func (a agentTarget) Detect() (bool, error) {
 	return info.IsDir(), nil
 }
 
+// envDir resolves a skills directory from an environment variable, falling back
+// to a path under the home directory. Both Codex and pi let the user relocate
+// their configuration, so neither can be hardcoded.
+func envDir(env string, fallback ...string) func() (string, error) {
+	return func() (string, error) {
+		if v := os.Getenv(env); v != "" {
+			return filepath.Join(v, "skills"), nil
+		}
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve home directory: %w", err)
+		}
+		return filepath.Join(home, filepath.Join(fallback...), "skills"), nil
+	}
+}
+
 var agents = []agentTarget{
 	homeAgent("claude", ".claude"),
+
+	// Codex still reads $CODEX_HOME/skills, but treats it as superseded.
+	{Name: "codex", SkillsDir: envDir("CODEX_HOME", ".codex"), SharesAgentsDir: true},
+
+	// pi keeps its agent configuration under ~/.pi/agent, not ~/.agent.
+	{Name: "pi", SkillsDir: envDir("PI_CODING_AGENT_DIR", ".pi", "agent"), SharesAgentsDir: true},
+
+	homeAgent(sharedAgent, ".agents"),
 }
 
 // installAction is what happened, or would happen, for one agent.
@@ -231,7 +263,30 @@ func resolveTargets(agent string) ([]agentTarget, error) {
 	if len(detected) == 0 {
 		return nil, fmt.Errorf("no supported agent found; pass --agent (supported: %s)", agentNames())
 	}
-	return detected, nil
+	return dropCoveredBySharedDir(detected), nil
+}
+
+// dropCoveredBySharedDir keeps auto-detection from installing two copies that
+// one agent would both load. Naming an agent explicitly still uses its own
+// directory.
+func dropCoveredBySharedDir(detected []agentTarget) []agentTarget {
+	var hasShared bool
+	for _, a := range detected {
+		if a.Name == sharedAgent {
+			hasShared = true
+		}
+	}
+	if !hasShared {
+		return detected
+	}
+
+	kept := detected[:0]
+	for _, a := range detected {
+		if !a.SharesAgentsDir {
+			kept = append(kept, a)
+		}
+	}
+	return kept
 }
 
 // planInstall decides what to do without touching the filesystem, so a dry run

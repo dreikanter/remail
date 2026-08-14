@@ -106,7 +106,19 @@ Every command takes `--json` and reports failures as `{"error": {"message": ...}
 so an agent can use the same commands without parsing tables.
 
 `remail skill` prints a skill document that teaches an agent these commands.
-`remail skill --install` writes it to `~/.claude/skills/remail/SKILL.md`.
+`remail skill --install` writes it into every agent it detects:
+
+| `--agent` | directory |
+|---|---|
+| `claude` | `~/.claude/skills/` |
+| `codex` | `$CODEX_HOME/skills/`, default `~/.codex/skills/` |
+| `pi` | `$PI_CODING_AGENT_DIR/skills/`, default `~/.pi/agent/skills/` |
+| `agents` | `~/.agents/skills/`, shared by Codex, pi, and others |
+
+Codex and pi read `~/.agents/skills/` as well as their own directory, so when
+that one exists they are skipped to avoid installing the skill twice. Pass
+`--agent` to target one directory regardless.
+
 Re-run after upgrading: an unchanged file is left alone, and an edited one is
 reported as a conflict rather than overwritten (`--force` replaces it).
 
