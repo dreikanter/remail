@@ -2,12 +2,14 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-19
+
 ### Fixed
 
-- `sync` no longer hangs forever on a stalled connection, and Ctrl-C stops it.
-- `pass_cmd` now runs in the mail directory, so relative paths in it work.
-- `pass_cmd` times out after two minutes instead of waiting on a prompt forever.
-- `sync` announces a rebuild instead of going quiet for minutes.
+- `sync` no longer hangs forever on a stalled connection, and Ctrl-C stops it. [#7]
+- `pass_cmd` now runs in the mail directory, so relative paths in it work. [#7]
+- `pass_cmd` times out after two minutes instead of waiting on a prompt forever. [#7]
+- `sync` announces a rebuild instead of going quiet for minutes. [#7]
 
 ## [0.1.0] - 2026-08-14
 
@@ -49,3 +51,5 @@
 - The password is read from a configurable shell command (`pass_cmd`), so any
   secret store works — macOS Keychain, `pass`, 1Password, an encrypted file.
   `REMAIL_PASSWORD` overrides it for headless and scheduled runs.
+
+[#7]: https://github.com/dreikanter/remail/pull/7
