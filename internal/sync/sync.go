@@ -74,7 +74,7 @@ func Run(ctx context.Context, root string, opts Options) (*Result, error) {
 		return nil, err
 	}
 
-	src, err := imapsrc.Open(imapsrc.Config{
+	src, err := imapsrc.Open(ctx, imapsrc.Config{
 		Addr:     cfg.Addr(),
 		Host:     cfg.Host,
 		Account:  cfg.Account,

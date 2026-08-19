@@ -21,6 +21,7 @@ import (
 // Client is a read-only IMAP mailbox.
 type Client struct {
 	c           *imapclient.Client
+	stopWatch   func() bool
 	uidValidity uint32
 }
 
@@ -35,26 +36,46 @@ type Config struct {
 }
 
 // Open connects, authenticates, and selects the mailbox read-only.
-func Open(cfg Config) (*Client, error) {
+//
+// ctx bounds the whole session, not just this call. The IMAP client has no
+// cancellation of its own and waits for the next server response with no read
+// deadline, so a connection that dies without closing — a sleeping laptop, a
+// VPN switch, a NAT that forgot the flow — leaves a command blocked forever.
+// Closing the connection is the only thing that unblocks that read, which is
+// what the watchdog below does when ctx is done.
+func Open(ctx context.Context, cfg Config) (*Client, error) {
 	c, err := imapclient.DialTLS(cfg.Addr, &imapclient.Options{
 		TLSConfig: &tls.Config{ServerName: cfg.Host, MinVersion: tls.VersionTLS12},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("connect to %s: %w", cfg.Addr, err)
 	}
+	stopWatch := context.AfterFunc(ctx, func() { _ = c.Close() })
 
 	if err := c.Login(cfg.Account, cfg.Password).Wait(); err != nil {
+		stopWatch()
 		_ = c.Close()
-		return nil, fmt.Errorf("login as %s: %w", cfg.Account, err)
+		return nil, abort(ctx, fmt.Errorf("login as %s: %w", cfg.Account, err))
 	}
 
 	data, err := c.Select(cfg.Mailbox, &imap.SelectOptions{ReadOnly: true}).Wait()
 	if err != nil {
+		stopWatch()
 		_ = c.Close()
-		return nil, fmt.Errorf("open mailbox %q: %w", cfg.Mailbox, err)
+		return nil, abort(ctx, fmt.Errorf("open mailbox %q: %w", cfg.Mailbox, err))
 	}
 
-	return &Client{c: c, uidValidity: data.UIDValidity}, nil
+	return &Client{c: c, stopWatch: stopWatch, uidValidity: data.UIDValidity}, nil
+}
+
+// abort reports why the connection went away. Cancelling ctx closes the socket
+// underneath a blocked command, and "use of closed network connection" says
+// nothing useful about an interrupted sync.
+func abort(ctx context.Context, err error) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return ctxErr
+	}
+	return err
 }
 
 // UIDValidity implements source.Source.
@@ -79,7 +100,7 @@ func (cl *Client) List(ctx context.Context, fromUID uint32, since time.Time) ([]
 
 	data, err := cl.c.UIDSearch(criteria, &imap.SearchOptions{ReturnAll: true}).Wait()
 	if err != nil {
-		return nil, fmt.Errorf("search: %w", err)
+		return nil, abort(ctx, fmt.Errorf("search: %w", err))
 	}
 
 	uids := data.AllUIDs()
@@ -99,11 +120,11 @@ func (cl *Client) List(ctx context.Context, fromUID uint32, since time.Time) ([]
 		return nil, nil
 	}
 
-	return cl.describe(kept)
+	return cl.describe(ctx, kept)
 }
 
 // describe fetches metadata only, so listing stays cheap on a large mailbox.
-func (cl *Client) describe(uids []imap.UID) ([]source.Ref, error) {
+func (cl *Client) describe(ctx context.Context, uids []imap.UID) ([]source.Ref, error) {
 	cmd := cl.c.Fetch(imap.UIDSetNum(uids...), &imap.FetchOptions{
 		UID:          true,
 		InternalDate: true,
@@ -130,7 +151,7 @@ func (cl *Client) describe(uids []imap.UID) ([]source.Ref, error) {
 	}
 
 	if err := cmd.Close(); err != nil {
-		return nil, fmt.Errorf("fetch metadata: %w", err)
+		return nil, abort(ctx, fmt.Errorf("fetch metadata: %w", err))
 	}
 	return refs, nil
 }
@@ -159,14 +180,14 @@ func (cl *Client) Fetch(ctx context.Context, ref source.Ref) ([]byte, error) {
 			}
 			b, err := io.ReadAll(body.Literal)
 			if err != nil {
-				return nil, fmt.Errorf("read UID %d: %w", ref.UID, err)
+				return nil, abort(ctx, fmt.Errorf("read UID %d: %w", ref.UID, err))
 			}
 			raw = b
 		}
 	}
 
 	if err := cmd.Close(); err != nil {
-		return nil, fmt.Errorf("fetch UID %d: %w", ref.UID, err)
+		return nil, abort(ctx, fmt.Errorf("fetch UID %d: %w", ref.UID, err))
 	}
 	if len(raw) == 0 {
 		return nil, fmt.Errorf("UID %d returned no data", ref.UID)
@@ -176,6 +197,11 @@ func (cl *Client) Fetch(ctx context.Context, ref source.Ref) ([]byte, error) {
 
 // Close logs out and closes the connection.
 func (cl *Client) Close() error {
+	// A false return means the watchdog already fired, so the connection is
+	// gone and there is nothing left to log out of.
+	if !cl.stopWatch() {
+		return cl.c.Close()
+	}
 	if err := cl.c.Logout().Wait(); err != nil {
 		_ = cl.c.Close()
 		return err
