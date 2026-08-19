@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -49,10 +51,18 @@ func runSync(cmd *cobra.Command, _ []string) error {
 		opts.Progress = func(n int, subject string) {
 			fmt.Fprintf(out(cmd), "%4d  %s\n", n, oneLine(subject))
 		}
+		opts.Notice = func(msg string) {
+			fmt.Fprintln(out(cmd), msg)
+		}
 	}
 
 	res, err := sync.Run(ctx, dir, opts)
 	if err != nil {
+		// Ctrl-C is a normal way to stop a sync; "context canceled" is not what
+		// the person who pressed it needs to read.
+		if ctx.Err() != nil && errors.Is(err, context.Canceled) {
+			return errors.New("interrupted")
+		}
 		return err
 	}
 
