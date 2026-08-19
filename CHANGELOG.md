@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-19
+
+### Changed
+
+- Updated dependencies. Building from source now needs Go 1.25.8.
+
 ## [0.1.1] - 2026-08-19
 
 ### Fixed
