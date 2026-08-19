@@ -3,6 +3,7 @@
 package config
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // Name is the config file stored in the mail directory.
@@ -18,6 +20,17 @@ const Name = "remail.json"
 // PasswordEnv overrides pass_cmd when set. Intended for headless and scheduled
 // runs where a keychain prompt would block with no way to answer it.
 const PasswordEnv = "REMAIL_PASSWORD"
+
+// passTimeout bounds pass_cmd. A password helper that decides to ask the user
+// something — a keychain authorization dialog, a pinentry prompt, an approval
+// in a password manager — otherwise blocks sync indefinitely with an empty
+// screen and no hint about what it is waiting for.
+const passTimeout = 2 * time.Minute
+
+// passWaitDelay is how long to keep waiting for pass_cmd's output after its
+// process is killed. Killing sh does not reap a grandchild that inherited the
+// output pipe, and a live grandchild would keep the read blocked forever.
+const passWaitDelay = 5 * time.Second
 
 // Config is the on-disk remail.json. Only account and pass_cmd are required;
 // everything else is filled in from the provider preset.
@@ -31,6 +44,11 @@ type Config struct {
 	Host    string `json:"host,omitempty"`
 	Port    int    `json:"port,omitempty"`
 	Mailbox string `json:"mailbox,omitempty"`
+
+	// dir is the mail directory this config was loaded from. pass_cmd runs
+	// there, so the command a mailbox carries does not depend on where the
+	// user happened to run remail from.
+	dir string
 }
 
 type preset struct {
@@ -80,6 +98,7 @@ func Load(dir string) (*Config, error) {
 	if err := c.applyDefaults(); err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
+	c.dir = dir
 	return &c, nil
 }
 
@@ -146,17 +165,43 @@ func (c *Config) Save(dir string) error {
 // pass_cmd runs through "sh -c" so ordinary shell syntax works. That makes
 // remail.json executable configuration, which is why Load refuses to read a
 // config that is writable by group or others.
-func (c *Config) Password() (string, error) {
+//
+// The command runs in the mail directory and is bounded by ctx and a timeout.
+// Both matter: the config belongs to one mailbox, so a relative path in
+// pass_cmd has to mean the same thing wherever remail is invoked from, and a
+// helper that stops to ask the user something must not be able to wedge a
+// sync that has printed nothing yet.
+func (c *Config) Password(ctx context.Context) (string, error) {
 	if v := os.Getenv(PasswordEnv); v != "" {
 		return v, nil
 	}
 
-	cmd := exec.Command("sh", "-c", c.PassCmd)
+	cmdCtx, cancel := context.WithTimeout(ctx, passTimeout)
+	defer cancel()
+
+	// Stdin is left nil, which makes it /dev/null: a helper that reads a
+	// passphrase from stdin gets EOF and fails rather than waiting for input
+	// that is never typed.
+	cmd := exec.CommandContext(cmdCtx, "sh", "-c", c.PassCmd)
+	cmd.Dir = c.dir
+	cmd.WaitDelay = passWaitDelay
+
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 
 	out, err := cmd.Output()
 	if err != nil {
+		switch {
+		case ctx.Err() != nil:
+			// The caller gave up, so its reason is the useful one.
+			return "", ctx.Err()
+		case errors.Is(cmdCtx.Err(), context.DeadlineExceeded):
+			return "", fmt.Errorf(
+				"pass_cmd did not finish within %s: it is likely waiting for input; "+
+					"run it by hand to see, or set %s to bypass it",
+				passTimeout, PasswordEnv)
+		}
+
 		msg := strings.TrimSpace(stderr.String())
 		if msg != "" {
 			return "", fmt.Errorf("pass_cmd failed: %s", msg)

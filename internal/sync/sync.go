@@ -69,7 +69,7 @@ func Run(ctx context.Context, root string, opts Options) (*Result, error) {
 		return res, nil
 	}
 
-	password, err := cfg.Password()
+	password, err := cfg.Password(ctx)
 	if err != nil {
 		return nil, err
 	}

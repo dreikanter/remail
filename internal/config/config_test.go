@@ -1,11 +1,13 @@
 package config
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func write(t *testing.T, dir, body string, perm os.FileMode) {
@@ -96,7 +98,7 @@ func TestLoadRefusesWorldWritableConfig(t *testing.T) {
 func TestPasswordFromCommand(t *testing.T) {
 	cfg := &Config{PassCmd: "printf 'hunter2\n'"}
 
-	got, err := cfg.Password()
+	got, err := cfg.Password(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +113,7 @@ func TestPasswordEnvOverridesCommand(t *testing.T) {
 	t.Setenv(PasswordEnv, "from-env")
 	cfg := &Config{PassCmd: "echo from-command"}
 
-	got, err := cfg.Password()
+	got, err := cfg.Password(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +125,7 @@ func TestPasswordEnvOverridesCommand(t *testing.T) {
 func TestPasswordCommandFailureIsReported(t *testing.T) {
 	cfg := &Config{PassCmd: "echo 'nope' >&2; exit 1"}
 
-	_, err := cfg.Password()
+	_, err := cfg.Password(t.Context())
 	if err == nil {
 		t.Fatal("Password succeeded on a failing command")
 	}
@@ -134,8 +136,56 @@ func TestPasswordCommandFailureIsReported(t *testing.T) {
 
 func TestPasswordEmptyOutputIsAnError(t *testing.T) {
 	cfg := &Config{PassCmd: "true"}
-	if _, err := cfg.Password(); err == nil {
+	if _, err := cfg.Password(t.Context()); err == nil {
 		t.Error("Password succeeded with no output, want an error")
+	}
+}
+
+// pass_cmd belongs to one mailbox, so a relative path in it has to resolve
+// against that mailbox no matter where remail was invoked from.
+func TestPasswordCommandRunsInTheMailDirectory(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "secret"), []byte("hunter2\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	write(t, dir, `{"provider":"gmail","account":"a@example.com","pass_cmd":"cat secret"}`, 0o600)
+
+	cfg, err := Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Anywhere but the mail directory, so a cwd-relative read would fail.
+	t.Chdir(t.TempDir())
+
+	got, err := cfg.Password(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "hunter2" {
+		t.Errorf("Password = %q, want pass_cmd to run in the mail directory", got)
+	}
+}
+
+// A helper that stops to ask the user something must not wedge the caller.
+func TestPasswordCommandIsCancellable(t *testing.T) {
+	cfg := &Config{PassCmd: "sleep 60"}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	done := make(chan error, 1)
+	go func() { _, err := cfg.Password(ctx); done <- err }()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Password succeeded on a cancelled context")
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("Password ignored the cancelled context")
 	}
 }
 
