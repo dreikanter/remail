@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- `pass_cmd` now runs in the mail directory instead of the current working
+  directory, so a password command with a relative path in it works the same
+  whether or not you are standing in the mailbox when you run `sync`.
+- `sync` can no longer hang unkillably. A stalled password command, or a server
+  connection that goes silent — a sleeping laptop, a VPN switch, a dropped
+  connection nobody told us about — used to block the run forever and ignore
+  Ctrl-C. Both are interruptible now, and a password command that stops to ask
+  the user something is given two minutes and then reported.
+- `sync` announces a rebuild before it starts, so the silent pass over a large
+  mailbox is no longer mistaken for a hang.
+
 ## [0.1.0] - 2026-08-14
 
 ### Added

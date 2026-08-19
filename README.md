@@ -147,10 +147,12 @@ That is the whole file. `provider` fills in host, port, and TLS; `gmail`,
 override.
 
 `pass_cmd` is any command that prints the password on stdout — the macOS
-keychain, `pass`, `op read`, an encrypted file. `REMAIL_PASSWORD` overrides it;
-scheduled runs should use that, since a keychain prompt has nobody to answer
-it. Because `pass_cmd` is executed, `remail.json` is refused if it is writable
-by anyone but you.
+keychain, `pass`, `op read`, an encrypted file. It runs in the mail directory,
+so a relative path inside it means the same thing wherever `remail` is invoked
+from, and it has two minutes to finish before `sync` gives up and says so.
+`REMAIL_PASSWORD` overrides it; scheduled runs should use that, since a
+keychain prompt has nobody to answer it. Because `pass_cmd` is executed,
+`remail.json` is refused if it is writable by anyone but you.
 
 `since_days` bounds the first sync only. Later runs fetch by UID, which costs
 one round trip when there is nothing new.
