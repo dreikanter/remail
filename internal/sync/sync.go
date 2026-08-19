@@ -34,9 +34,9 @@ type Options struct {
 	Offline bool
 	// Progress, when set, is called as each message is stored.
 	Progress func(n int, subject string)
-	// Notice, when set, announces a step that runs without per-message output.
-	// A rebuild of a large mailbox is otherwise several silent minutes, which
-	// is indistinguishable from a hang.
+	// Notice, when set, announces a step that produces no per-message output.
+	// A rebuild of a large mailbox is otherwise minutes of silence, which reads
+	// as a hang.
 	Notice func(msg string)
 }
 

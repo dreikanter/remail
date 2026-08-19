@@ -37,12 +37,10 @@ type Config struct {
 
 // Open connects, authenticates, and selects the mailbox read-only.
 //
-// ctx bounds the whole session, not just this call. The IMAP client has no
-// cancellation of its own and waits for the next server response with no read
-// deadline, so a connection that dies without closing — a sleeping laptop, a
-// VPN switch, a NAT that forgot the flow — leaves a command blocked forever.
-// Closing the connection is the only thing that unblocks that read, which is
-// what the watchdog below does when ctx is done.
+// ctx bounds the whole session, not just this call. The client waits for the
+// next server response with no read deadline, so a connection that dies
+// without closing leaves a command blocked forever; closing the connection is
+// the only thing that unblocks that read.
 func Open(ctx context.Context, cfg Config) (*Client, error) {
 	c, err := imapclient.DialTLS(cfg.Addr, &imapclient.Options{
 		TLSConfig: &tls.Config{ServerName: cfg.Host, MinVersion: tls.VersionTLS12},
@@ -68,9 +66,9 @@ func Open(ctx context.Context, cfg Config) (*Client, error) {
 	return &Client{c: c, stopWatch: stopWatch, uidValidity: data.UIDValidity}, nil
 }
 
-// abort reports why the connection went away. Cancelling ctx closes the socket
-// underneath a blocked command, and "use of closed network connection" says
-// nothing useful about an interrupted sync.
+// abort reports why the connection went away: cancelling ctx closes the socket
+// underneath a blocked command, and the "use of closed network connection"
+// that surfaces says nothing useful.
 func abort(ctx context.Context, err error) error {
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return ctxErr

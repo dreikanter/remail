@@ -141,8 +141,8 @@ func TestPasswordEmptyOutputIsAnError(t *testing.T) {
 	}
 }
 
-// pass_cmd belongs to one mailbox, so a relative path in it has to resolve
-// against that mailbox no matter where remail was invoked from.
+// A relative path in pass_cmd must resolve against the mailbox, not against
+// wherever remail was invoked from.
 func TestPasswordCommandRunsInTheMailDirectory(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "secret"), []byte("hunter2\n"), 0o600); err != nil {

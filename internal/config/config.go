@@ -21,15 +21,13 @@ const Name = "remail.json"
 // runs where a keychain prompt would block with no way to answer it.
 const PasswordEnv = "REMAIL_PASSWORD"
 
-// passTimeout bounds pass_cmd. A password helper that decides to ask the user
-// something — a keychain authorization dialog, a pinentry prompt, an approval
-// in a password manager — otherwise blocks sync indefinitely with an empty
-// screen and no hint about what it is waiting for.
+// passTimeout bounds pass_cmd. A helper that stops to ask the user something —
+// a keychain dialog, a pinentry prompt — would otherwise block sync forever.
 const passTimeout = 2 * time.Minute
 
-// passWaitDelay is how long to keep waiting for pass_cmd's output after its
-// process is killed. Killing sh does not reap a grandchild that inherited the
-// output pipe, and a live grandchild would keep the read blocked forever.
+// passWaitDelay bounds the wait for pass_cmd's output once its process is
+// killed: sh does not take its children with it, and a surviving grandchild
+// holds the output pipe open indefinitely.
 const passWaitDelay = 5 * time.Second
 
 // Config is the on-disk remail.json. Only account and pass_cmd are required;
@@ -45,9 +43,9 @@ type Config struct {
 	Port    int    `json:"port,omitempty"`
 	Mailbox string `json:"mailbox,omitempty"`
 
-	// dir is the mail directory this config was loaded from. pass_cmd runs
-	// there, so the command a mailbox carries does not depend on where the
-	// user happened to run remail from.
+	// dir is the mail directory this config was loaded from, and where pass_cmd
+	// runs: a mailbox's password command must not depend on the caller's
+	// working directory.
 	dir string
 }
 
@@ -166,11 +164,9 @@ func (c *Config) Save(dir string) error {
 // remail.json executable configuration, which is why Load refuses to read a
 // config that is writable by group or others.
 //
-// The command runs in the mail directory and is bounded by ctx and a timeout.
-// Both matter: the config belongs to one mailbox, so a relative path in
-// pass_cmd has to mean the same thing wherever remail is invoked from, and a
-// helper that stops to ask the user something must not be able to wedge a
-// sync that has printed nothing yet.
+// The command runs in the mail directory, so a relative path in it resolves
+// against the mailbox and not the caller's working directory, and it is
+// bounded by ctx and passTimeout.
 func (c *Config) Password(ctx context.Context) (string, error) {
 	if v := os.Getenv(PasswordEnv); v != "" {
 		return v, nil
@@ -179,9 +175,8 @@ func (c *Config) Password(ctx context.Context) (string, error) {
 	cmdCtx, cancel := context.WithTimeout(ctx, passTimeout)
 	defer cancel()
 
-	// Stdin is left nil, which makes it /dev/null: a helper that reads a
-	// passphrase from stdin gets EOF and fails rather than waiting for input
-	// that is never typed.
+	// Stdin is left nil, so it is /dev/null: a helper that reads a passphrase
+	// from stdin gets EOF instead of waiting for input that never comes.
 	cmd := exec.CommandContext(cmdCtx, "sh", "-c", c.PassCmd)
 	cmd.Dir = c.dir
 	cmd.WaitDelay = passWaitDelay
