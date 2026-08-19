@@ -51,6 +51,9 @@ func runSync(cmd *cobra.Command, _ []string) error {
 		opts.Progress = func(n int, subject string) {
 			fmt.Fprintf(out(cmd), "%4d  %s\n", n, oneLine(subject))
 		}
+		opts.Notice = func(msg string) {
+			fmt.Fprintln(out(cmd), msg)
+		}
 	}
 
 	res, err := sync.Run(ctx, dir, opts)

@@ -34,6 +34,10 @@ type Options struct {
 	Offline bool
 	// Progress, when set, is called as each message is stored.
 	Progress func(n int, subject string)
+	// Notice, when set, announces a step that runs without per-message output.
+	// A rebuild of a large mailbox is otherwise several silent minutes, which
+	// is indistinguishable from a hang.
+	Notice func(msg string)
 }
 
 // Run performs a sync against the mail directory at root.
@@ -54,6 +58,9 @@ func Run(ctx context.Context, root string, opts Options) (*Result, error) {
 
 	// A format bump means every message directory came from older code.
 	if opts.Rebuild || st.ExportFormat != export.Format {
+		if opts.Notice != nil {
+			opts.Notice("rebuilding messages/ from raw/")
+		}
 		n, err := Rebuild(ctx, root)
 		if err != nil {
 			return nil, err
