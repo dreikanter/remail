@@ -1,6 +1,7 @@
 package export
 
 import (
+	"errors"
 	"io"
 	"mime"
 	"strings"
@@ -41,7 +42,7 @@ func walk(e *message.Entity, p *parts, index *int) error {
 	if mr := e.MultipartReader(); mr != nil && mediaType != "message/rfc822" {
 		for {
 			part, err := mr.NextPart()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				return nil
 			}
 			if err != nil {

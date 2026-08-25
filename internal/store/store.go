@@ -16,7 +16,9 @@ package store
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -132,7 +134,7 @@ func WriteRaw(root string, t time.Time, id string, raw []byte) (string, bool, er
 	path := RawPath(root, t, id)
 	if _, err := os.Stat(path); err == nil {
 		return path, false, nil
-	} else if !os.IsNotExist(err) {
+	} else if !errors.Is(err, fs.ErrNotExist) {
 		return "", false, err
 	}
 	if err := atomicfile.Write(path, raw, 0o600); err != nil {
@@ -151,7 +153,7 @@ func RawFiles(root string) ([]string, error) {
 
 	err := filepath.WalkDir(base, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			if os.IsNotExist(err) && path == base {
+			if errors.Is(err, fs.ErrNotExist) && path == base {
 				return filepath.SkipAll
 			}
 			return err

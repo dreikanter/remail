@@ -2,6 +2,8 @@ package export
 
 import (
 	"encoding/base64"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -173,7 +175,7 @@ func TestExportAttachmentPathTraversal(t *testing.T) {
 	}
 
 	// Nothing may exist outside the message directory.
-	if _, err := os.Stat(filepath.Join(root, "etc")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, "etc")); !errors.Is(err, fs.ErrNotExist) {
 		t.Error("traversal escaped the message directory")
 	}
 
@@ -323,7 +325,7 @@ func TestExportReplacesStaleFiles(t *testing.T) {
 	if _, err := Message(root, filepath.Join(msg.Dir, filepath.FromSlash(msg.Raw)), raw, testDate); err != nil {
 		t.Fatalf("re-export: %v", err)
 	}
-	if _, err := os.Stat(stale); !os.IsNotExist(err) {
+	if _, err := os.Stat(stale); !errors.Is(err, fs.ErrNotExist) {
 		t.Error("stale file survived a re-export")
 	}
 }

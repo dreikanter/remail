@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -245,7 +247,7 @@ func TestSkillInstallDryRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(path); !os.IsNotExist(err) {
+	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatal("dry run wrote the file")
 	}
 
@@ -293,7 +295,7 @@ func TestSkillInstallMissingSkillsDir(t *testing.T) {
 	if !strings.Contains(out, "no skills directory") {
 		t.Errorf("output = %q, want a per-target error", out)
 	}
-	if _, err := os.Stat(filepath.Join(home, ".claude")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(home, ".claude")); !errors.Is(err, fs.ErrNotExist) {
 		t.Error("install created the agent's own directory")
 	}
 }
@@ -371,7 +373,7 @@ func TestSkillInstallPrefersSharedDir(t *testing.T) {
 	}
 	for _, rel := range []string{".codex/skills", ".pi/agent/skills"} {
 		path := filepath.Join(home, filepath.FromSlash(rel), skillDirName, "SKILL.md")
-		if _, err := os.Stat(path); !os.IsNotExist(err) {
+		if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("duplicate copy written to %s", rel)
 		}
 	}

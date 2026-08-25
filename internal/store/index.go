@@ -2,8 +2,10 @@ package store
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -107,13 +109,13 @@ func ReadFrontmatter(path string) (*Frontmatter, error) {
 func extractFrontmatter(data []byte) ([]byte, error) {
 	s := string(data)
 	if !strings.HasPrefix(s, fence+"\n") {
-		return nil, fmt.Errorf("missing YAML frontmatter")
+		return nil, errors.New("missing YAML frontmatter")
 	}
 	rest := s[len(fence)+1:]
 
 	end := strings.Index(rest, "\n"+fence+"\n")
 	if end < 0 {
-		return nil, fmt.Errorf("unterminated YAML frontmatter")
+		return nil, errors.New("unterminated YAML frontmatter")
 	}
 	return []byte(rest[:end+1]), nil
 }
@@ -122,7 +124,7 @@ func extractFrontmatter(data []byte) ([]byte, error) {
 func shards(root string) ([]string, error) {
 	entries, err := os.ReadDir(filepath.Join(root, MessagesDir))
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
 		return nil, err
@@ -154,7 +156,7 @@ func readShard(root, shard string) ([]Message, error) {
 		path := filepath.Join(dir, e.Name(), MessageFile)
 		fm, err := ReadFrontmatter(path)
 		if err != nil {
-			if os.IsNotExist(err) {
+			if errors.Is(err, fs.ErrNotExist) {
 				continue // a directory mid-write, or hand-deleted content
 			}
 			return nil, err
@@ -204,7 +206,7 @@ func List(root string, limit int, since time.Time) ([]Message, error) {
 func Find(root, ref string) (*Message, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
-		return nil, fmt.Errorf("no message id given")
+		return nil, errors.New("no message id given")
 	}
 	ref = strings.TrimSuffix(ref, string(os.PathSeparator))
 
