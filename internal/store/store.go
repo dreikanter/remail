@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -165,7 +165,7 @@ func RawFiles(root string) ([]string, error) {
 		return nil, err
 	}
 
-	sort.Strings(files)
+	slices.Sort(files)
 	return files, nil
 }
 

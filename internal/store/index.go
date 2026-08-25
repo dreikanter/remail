@@ -6,7 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -134,7 +134,8 @@ func shards(root string) ([]string, error) {
 			names = append(names, e.Name())
 		}
 	}
-	sort.Sort(sort.Reverse(sort.StringSlice(names)))
+	slices.Sort(names)
+	slices.Reverse(names)
 	return names, nil
 }
 
@@ -191,7 +192,7 @@ func List(root string, limit int, since time.Time) ([]Message, error) {
 		}
 	}
 
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Date.After(out[j].Date) })
+	slices.SortStableFunc(out, func(a, b Message) int { return b.Date.Compare(a.Date) })
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
 	}
@@ -235,7 +236,7 @@ func Find(root, ref string) (*Message, error) {
 		for _, m := range matches {
 			ids = append(ids, m.ID)
 		}
-		sort.Strings(ids)
+		slices.Sort(ids)
 		return nil, fmt.Errorf("%q matches %d messages (%s)", ref, len(matches), strings.Join(ids, ", "))
 	}
 }
