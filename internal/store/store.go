@@ -78,11 +78,10 @@ func RawPath(root string, t time.Time, id string) string {
 func ParseRawName(path string) (time.Time, string, error) {
 	name := strings.TrimSuffix(filepath.Base(path), ".eml")
 
-	i := strings.LastIndex(name, "-")
-	if i < 0 {
+	stamp, id, ok := strings.CutLast(name, "-")
+	if !ok {
 		return time.Time{}, "", fmt.Errorf("unrecognized raw filename %q", filepath.Base(path))
 	}
-	stamp, id := name[:i], name[i+1:]
 
 	t, err := time.Parse(rawStamp, stamp)
 	if err != nil {

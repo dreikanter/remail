@@ -18,8 +18,8 @@ const maxFilenameLen = 100
 func sanitizeFilename(name string, index int, mediaType string) string {
 	// Cut anything readable as a directory on either separator convention.
 	name = strings.ReplaceAll(name, "\\", "/")
-	if i := strings.LastIndex(name, "/"); i >= 0 {
-		name = name[i+1:]
+	if _, base, ok := strings.CutLast(name, "/"); ok {
+		name = base
 	}
 	name = filepath.Base(name)
 
