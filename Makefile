@@ -11,6 +11,7 @@ test:
 	go test -coverprofile=coverage.out ./...
 
 lint:
+	go fix -diff ./...
 	go tool golangci-lint run
 
 clean:
