@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Building from source now needs Go 1.27.
+
 ## [0.1.2] - 2026-08-19
 
 ### Changed
