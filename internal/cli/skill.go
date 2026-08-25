@@ -52,8 +52,8 @@ func loadSkill() Skill {
 		panic("skill.md: missing opening frontmatter delimiter")
 	}
 	rest := skillDoc[len(open):]
-	end := strings.Index(rest, close)
-	if end < 0 {
+	before, after, ok := strings.Cut(rest, close)
+	if !ok {
 		panic("skill.md: missing closing frontmatter delimiter")
 	}
 
@@ -61,7 +61,7 @@ func loadSkill() Skill {
 		Name        string `yaml:"name"`
 		Description string `yaml:"description"`
 	}
-	if err := yaml.Unmarshal([]byte(rest[:end]), &meta); err != nil {
+	if err := yaml.Unmarshal([]byte(before), &meta); err != nil {
 		panic("skill.md: invalid frontmatter: " + err.Error())
 	}
 	if meta.Name == "" || meta.Description == "" {
@@ -71,7 +71,7 @@ func loadSkill() Skill {
 	return Skill{
 		Name:        meta.Name,
 		Description: meta.Description,
-		Body:        strings.TrimPrefix(rest[end+len(close):], "\n"),
+		Body:        strings.TrimPrefix(after, "\n"),
 		raw:         skillDoc,
 	}
 }

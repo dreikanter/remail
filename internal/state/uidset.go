@@ -2,6 +2,7 @@ package state
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -31,7 +32,7 @@ func ParseUIDSet(s string) (*UIDSet, error) {
 		return set, nil
 	}
 
-	for _, part := range strings.Split(s, ",") {
+	for part := range strings.SplitSeq(s, ",") {
 		part = strings.TrimSpace(part)
 		if part == "" {
 			continue
@@ -61,7 +62,7 @@ func parseUID(s string) (uint32, error) {
 		return 0, err
 	}
 	if v == 0 {
-		return 0, fmt.Errorf("UID 0 is not valid")
+		return 0, errors.New("UID 0 is not valid")
 	}
 	return uint32(v), nil
 }

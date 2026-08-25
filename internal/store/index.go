@@ -2,11 +2,13 @@ package store
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 
@@ -107,13 +109,13 @@ func ReadFrontmatter(path string) (*Frontmatter, error) {
 func extractFrontmatter(data []byte) ([]byte, error) {
 	s := string(data)
 	if !strings.HasPrefix(s, fence+"\n") {
-		return nil, fmt.Errorf("missing YAML frontmatter")
+		return nil, errors.New("missing YAML frontmatter")
 	}
 	rest := s[len(fence)+1:]
 
 	end := strings.Index(rest, "\n"+fence+"\n")
 	if end < 0 {
-		return nil, fmt.Errorf("unterminated YAML frontmatter")
+		return nil, errors.New("unterminated YAML frontmatter")
 	}
 	return []byte(rest[:end+1]), nil
 }
@@ -122,7 +124,7 @@ func extractFrontmatter(data []byte) ([]byte, error) {
 func shards(root string) ([]string, error) {
 	entries, err := os.ReadDir(filepath.Join(root, MessagesDir))
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
 		return nil, err
@@ -134,7 +136,8 @@ func shards(root string) ([]string, error) {
 			names = append(names, e.Name())
 		}
 	}
-	sort.Sort(sort.Reverse(sort.StringSlice(names)))
+	slices.Sort(names)
+	slices.Reverse(names)
 	return names, nil
 }
 
@@ -153,7 +156,7 @@ func readShard(root, shard string) ([]Message, error) {
 		path := filepath.Join(dir, e.Name(), MessageFile)
 		fm, err := ReadFrontmatter(path)
 		if err != nil {
-			if os.IsNotExist(err) {
+			if errors.Is(err, fs.ErrNotExist) {
 				continue // a directory mid-write, or hand-deleted content
 			}
 			return nil, err
@@ -191,7 +194,7 @@ func List(root string, limit int, since time.Time) ([]Message, error) {
 		}
 	}
 
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Date.After(out[j].Date) })
+	slices.SortStableFunc(out, func(a, b Message) int { return b.Date.Compare(a.Date) })
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
 	}
@@ -203,7 +206,7 @@ func List(root string, limit int, since time.Time) ([]Message, error) {
 func Find(root, ref string) (*Message, error) {
 	ref = strings.TrimSpace(ref)
 	if ref == "" {
-		return nil, fmt.Errorf("no message id given")
+		return nil, errors.New("no message id given")
 	}
 	ref = strings.TrimSuffix(ref, string(os.PathSeparator))
 
@@ -235,7 +238,7 @@ func Find(root, ref string) (*Message, error) {
 		for _, m := range matches {
 			ids = append(ids, m.ID)
 		}
-		sort.Strings(ids)
+		slices.Sort(ids)
 		return nil, fmt.Errorf("%q matches %d messages (%s)", ref, len(matches), strings.Join(ids, ", "))
 	}
 }

@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"runtime"
 	"strings"
@@ -53,7 +55,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 	sinceDays, _ := cmd.Flags().GetInt("since-days")
 
 	if account == "" {
-		return fmt.Errorf("--account is required")
+		return errors.New("--account is required")
 	}
 
 	cfg := &config.Config{
@@ -70,7 +72,7 @@ func runInit(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 	if err := cfg.Save(dir); err != nil {
-		if os.IsExist(err) {
+		if errors.Is(err, fs.ErrExist) {
 			return fmt.Errorf("%s already exists", config.Path(dir))
 		}
 		return err

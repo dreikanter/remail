@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-25
+
+### Changed
+
+- Building from source now needs Go 1.27. [#9]
+
 ## [0.1.2] - 2026-08-19
 
 ### Changed
@@ -59,3 +65,4 @@
   `REMAIL_PASSWORD` overrides it for headless and scheduled runs.
 
 [#7]: https://github.com/dreikanter/remail/pull/7
+[#9]: https://github.com/dreikanter/remail/pull/9

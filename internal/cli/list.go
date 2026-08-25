@@ -103,8 +103,8 @@ func parseSince(s string) (time.Time, error) {
 // use in a list than "billing@bounces.acme.example".
 func sender(from string) string {
 	from = oneLine(from)
-	if i := strings.LastIndex(from, "<"); i > 0 {
-		if name := strings.TrimSpace(strings.Trim(from[:i], `"' `)); name != "" {
+	if before, _, ok := strings.CutLast(from, "<"); ok {
+		if name := strings.TrimSpace(strings.Trim(before, `"' `)); name != "" {
 			return name
 		}
 	}

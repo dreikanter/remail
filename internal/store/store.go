@@ -16,10 +16,12 @@ package store
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -76,11 +78,10 @@ func RawPath(root string, t time.Time, id string) string {
 func ParseRawName(path string) (time.Time, string, error) {
 	name := strings.TrimSuffix(filepath.Base(path), ".eml")
 
-	i := strings.LastIndex(name, "-")
-	if i < 0 {
+	stamp, id, ok := strings.CutLast(name, "-")
+	if !ok {
 		return time.Time{}, "", fmt.Errorf("unrecognized raw filename %q", filepath.Base(path))
 	}
-	stamp, id := name[:i], name[i+1:]
 
 	t, err := time.Parse(rawStamp, stamp)
 	if err != nil {
@@ -132,7 +133,7 @@ func WriteRaw(root string, t time.Time, id string, raw []byte) (string, bool, er
 	path := RawPath(root, t, id)
 	if _, err := os.Stat(path); err == nil {
 		return path, false, nil
-	} else if !os.IsNotExist(err) {
+	} else if !errors.Is(err, fs.ErrNotExist) {
 		return "", false, err
 	}
 	if err := atomicfile.Write(path, raw, 0o600); err != nil {
@@ -151,7 +152,7 @@ func RawFiles(root string) ([]string, error) {
 
 	err := filepath.WalkDir(base, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
-			if os.IsNotExist(err) && path == base {
+			if errors.Is(err, fs.ErrNotExist) && path == base {
 				return filepath.SkipAll
 			}
 			return err
@@ -165,7 +166,7 @@ func RawFiles(root string) ([]string, error) {
 		return nil, err
 	}
 
-	sort.Strings(files)
+	slices.Sort(files)
 	return files, nil
 }
 
